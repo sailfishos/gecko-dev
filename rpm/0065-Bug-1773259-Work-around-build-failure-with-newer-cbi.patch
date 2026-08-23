@@ -1,49 +1,40 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Mike Hommey <mh@glandium.org>
-Date: Mon, 28 Nov 2022 22:39:50 +0000
-Subject: [PATCH 65/67] Bug 1773259 - Work around build failure with newer
- cbindgen. r=ahochheiden, a=RyanVM
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 5 Aug 2026 16:52:58 +0200
+Subject: [PATCH 65/67] Separate the bindgen runtime libclang path
 
-Differential Revision: https://phabricator.services.mozilla.com/D162262
+Sailfish cross builds need configure to inspect the target SDK's libclang
+while host Rust build scripts load an executable host-architecture library.
+Retain a separate environment override for the latter.
+
+ESR140 requires cbindgen 0.27 or newer, so the old cbindgen 0.24 compatibility
+definition and duplicate WebRender constant are no longer needed.
+
+Parse Gecko headers as GNU C++17 when bindgen does not use clang-cl.
+ESR140 headers use C++17 library features, so bindgen must pass an explicit
+C++17 language mode to libclang.
 ---
- build/moz.configure/bindgen.configure  | 24 ++++++++++++++++++++++++
- config/makefiles/rust.mk               |  4 ++++
- gfx/webrender_bindings/webrender_ffi.h |  4 ++++
- 3 files changed, 32 insertions(+)
+ build/moz.configure/bindgen.configure | 17 +++++++++++++++++
+ config/makefiles/rust.mk              |  9 +++++++++
+ 2 files changed, 26 insertions(+)
 
 diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
-index 5ce66fe9afe9..e10f1d5d6930 100644
+index 078937ddcdae..5182c6ef74c0 100644
 --- a/build/moz.configure/bindgen.configure
 +++ b/build/moz.configure/bindgen.configure
-@@ -91,6 +91,15 @@ def cbindgen(cbindgen_override, bootstrap_search_path, rust_search_path):
- 
- set_config("CBINDGEN", cbindgen)
- 
-+set_define(
-+    "CBINDGEN_0_24",
-+    True,
-+    when=depends_if(cbindgen)(
-+        lambda c: Version(check_cmd_output(c, "--version").strip().split(" ")[1])
-+        >= "0.24.0"
-+    ),
-+)
-+
- # Bindgen can use rustfmt to format Rust file, but it's not required.
- option(env="RUSTFMT", nargs=1, help="Path to the rustfmt program")
- 
-@@ -108,6 +117,11 @@ option(
+@@ -93,6 +93,11 @@ option(
      nargs=1,
      help="Absolute path to a directory containing Clang/LLVM libraries for bindgen (version 3.9.x or above)",
  )
 +option(
 +    env="MOZ_LIBCLANG_BINDGEN_PATH",
 +    nargs=1,
-+    help="Absolute path to the libclang directory that Rust bindgen build scripts should load",
++    help="Host libclang directory loaded by Rust bindgen build scripts",
 +)
  option(
      "--with-clang-path",
      nargs=1,
-@@ -326,6 +340,16 @@ set_config("MOZ_LIBCLANG_PATH", bindgen_config_paths.libclang_path)
+@@ -313,6 +318,16 @@ set_config("MOZ_LIBCLANG_PATH", bindgen_config_paths.libclang_path)
  set_config("MOZ_CLANG_PATH", bindgen_config_paths.clang_path)
  
  
@@ -59,35 +50,34 @@ index 5ce66fe9afe9..e10f1d5d6930 100644
 +
  @depends(
      target,
-     target_is_unix,
+     cxx_compiler,
+@@ -354,6 +369,8 @@ def basic_bindgen_cflags(
+             # to exclude hidden symbols from the generated file.
+             "-DHAVE_VISIBILITY_HIDDEN_ATTRIBUTE=1",
+         ]
++    else:
++        args.append("-std=gnu++17")
+ 
+     return args + (clang_flags or []) + (all_arm_flags or [])
+ 
 diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
-index 894e2b341a53..74d14bb46df4 100644
+index 06893db33c7e..01bd98193d77 100644
 --- a/config/makefiles/rust.mk
 +++ b/config/makefiles/rust.mk
-@@ -221,7 +221,11 @@ export RUSTFLAGS
- export RUSTC
+@@ -276,7 +276,16 @@ export RUSTC
  export RUSTDOC
+ export RUSTDOCFLAGS
  export RUSTFMT
 +ifdef MOZ_LIBCLANG_BINDGEN_PATH
 +export LIBCLANG_PATH=$(MOZ_LIBCLANG_BINDGEN_PATH)
++ifdef LD_LIBRARY_PATH
++export LD_LIBRARY_PATH:=$(MOZ_LIBCLANG_BINDGEN_PATH):$(LD_LIBRARY_PATH)
++else
++export LD_LIBRARY_PATH:=$(MOZ_LIBCLANG_BINDGEN_PATH)
++endif
 +else
  export LIBCLANG_PATH=$(MOZ_LIBCLANG_PATH)
 +endif
  export CLANG_PATH=$(MOZ_CLANG_PATH)
  export PKG_CONFIG
  export PKG_CONFIG_ALLOW_CROSS=1
-diff --git a/gfx/webrender_bindings/webrender_ffi.h b/gfx/webrender_bindings/webrender_ffi.h
-index e9c8be1ef41c..35194ff37bd1 100644
---- a/gfx/webrender_bindings/webrender_ffi.h
-+++ b/gfx/webrender_bindings/webrender_ffi.h
-@@ -73,6 +73,10 @@ struct WrPipelineInfo;
- struct WrPipelineIdAndEpoch;
- using WrPipelineIdEpochs = nsTArray<WrPipelineIdAndEpoch>;
- 
-+#ifndef CBINDGEN_0_24
-+const uint64_t ROOT_CLIP_CHAIN = ~0;
-+#endif
-+
- }  // namespace wr
- }  // namespace mozilla
- 

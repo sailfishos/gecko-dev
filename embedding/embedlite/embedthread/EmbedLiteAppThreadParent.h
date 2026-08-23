@@ -32,7 +32,10 @@ protected:
                                                           const bool &isDesktopMode,
                                                           const bool &isHidden) override;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) override;
-  virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
+  virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(
+      const uint16_t &width, const uint16_t &height, const uint32_t &id,
+      const uintptr_t &aListener, const bool &chromeHosted,
+      const nsCString &initialContentURI) override;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*) override;
 
   // IPDL interface

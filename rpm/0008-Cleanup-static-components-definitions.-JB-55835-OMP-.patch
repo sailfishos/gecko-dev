@@ -10,10 +10,10 @@ Subject: [PATCH 08/67] Cleanup static components definitions. JB#55835
  1 file changed, 14 deletions(-)
 
 diff --git a/toolkit/xre/components.conf b/toolkit/xre/components.conf
-index b59964e79445..634743e436ee 100644
+index e1e90a1ddead..8e733efc803b 100644
 --- a/toolkit/xre/components.conf
 +++ b/toolkit/xre/components.conf
-@@ -10,20 +10,6 @@ else:
+@@ -8,20 +8,6 @@ else:
      crash_reporter = []
  
  Classes = [

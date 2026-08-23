@@ -7,6 +7,7 @@
 #define EMBED_LITE_APP_H
 
 #include "mozilla/RefPtr.h"
+#include "mozilla/Types.h"
 #include <string>
 #include <vector>
 #include <stdint.h>
@@ -91,6 +92,9 @@ public:
 
   // Setup profile path for embedding, or null if embedding supposed to be profile-less
   virtual void SetProfilePath(const char* aPath);
+  // Supply the EGLDisplay owned by the native toolkit before starting Gecko.
+  // Gecko borrows this handle and never initializes or terminates it.
+  virtual void SetEGLDisplay(void* aDisplay);
   // Start UI embedding loop merged with Gecko GFX, blocking call until Stop() called
   virtual bool Start(EmbedType aEmbedType);
   // Exit from UI embedding loop started with Start()
@@ -120,6 +124,16 @@ public:
                                     bool isDesktopMode = false,
                                     bool isHidden = false);
   virtual EmbedLiteWindow* CreateWindow(int width, int height, EmbedLiteWindowListener *aListener = nullptr);
+  // Create an opt-in window backed by Gecko's normal chrome AppWindow and a
+  // remote XUL browser. This is intentionally non-virtual so the legacy
+  // EmbedLiteApp vtable remains unchanged.
+  MOZ_EXPORT EmbedLiteWindow* CreateChromeWindow(
+    int width, int height, const char* initialContentURI,
+    EmbedLiteWindowListener* aListener = nullptr);
+  // Create a chrome-hosted tab-session window without an initial browser.
+  // This is also non-virtual to preserve the legacy EmbedLiteApp vtable.
+  MOZ_EXPORT EmbedLiteWindow* CreateChromeTabWindow(
+    int width, int height, EmbedLiteWindowListener* aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
@@ -158,6 +172,9 @@ public:
 private:
   EmbedLiteApp();
 
+  bool InitializeChildThread();
+  void ConnectChildThread();
+
   /*
    * States of EmbedLiteApp's lifecycle
    */
@@ -181,12 +198,17 @@ private:
   };
 
   void SetState(State aState);
+  EmbedLiteWindow* CreateWindowInternal(int width, int height,
+                                        const char* initialContentURI,
+                                        bool chromeHosted,
+                                        EmbedLiteWindowListener* aListener);
 
   static void StartChild(EmbedLiteApp* aApp);
   void Initialized();
 
   friend class EmbedLiteAppProcessParent;
   friend class EmbedLiteAppThreadParent;
+  friend class EmbedLiteSubThread;
   friend class EmbedLiteCompositorBridgeParent;
   friend class EmbedLitePuppetWidget;
   friend class nsWindow;

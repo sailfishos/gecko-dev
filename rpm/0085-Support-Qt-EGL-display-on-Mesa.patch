@@ -1,42 +1,45 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Wed, 22 Jul 2026 16:05:47 +0200
+Date: Wed, 5 Aug 2026 18:28:58 +0200
 Subject: [sailfishos][egl] Support Qt's EGL display on Mesa
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Qt's Wayland platform plugin owns the EGLDisplay used for its native
-windows. Borrow that initialized display in Gecko so Mesa does not create a
-second Wayland connection, and leave initialization and termination to Qt.
+Qt's Wayland platform plugin owns the EGLDisplay used for its native windows.
+Borrow that initialized display in Gecko so Mesa does not create a second
+Wayland connection, and leave initialization and termination to Qt.
 
 Request EGL configs whose renderable type matches the desktop GL, GLES 2, or
 GLES 3 context Gecko is about to create. This avoids EGL_BAD_MATCH when
-hardware WebRender requests a GLES 3 context.
+hardware WebRender requests a GLES 3 context. Locate Qt's versioned private
+QPA headers explicitly and update ESR140's additional ANGLE config caller.
 
-Allow desktop GL contexts to create EGLImage shared surfaces without
-requiring GLES-only GL_OES_EGL_image extensions. The EGL KHR image
-extensions provide the producer operation used on Mesa.
+Allow desktop GL contexts to create EGLImage shared surfaces without requiring
+GLES-only GL_OES_EGL_image extensions. The EGL KHR image extensions provide
+the producer operation used on Mesa.
 
 Co-authored-by: Adam Pigg <adam@piggz.co.uk>
 Co-authored-by: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Co-authored-by: Frajo Haider <franz.haider@jolla.com>
 Co-authored-by: Matti Lehtimäki <matti.lehtimaki@jolla.com>
 ---
- gfx/gl/AndroidSurfaceTexture.cpp |  2 +-
- gfx/gl/GLContextEGL.h            |  1 +
- gfx/gl/GLContextProviderEGL.cpp  | 93 +++++++++++++++++++++++++-------
- gfx/gl/GLLibraryEGL.cpp          | 50 ++++++++++++-----
- gfx/gl/GLLibraryEGL.h            | 12 +++--
- gfx/gl/SharedSurfaceEGL.cpp      |  3 +-
- gfx/gl/moz.build                 |  3 ++
- 7 files changed, 126 insertions(+), 38 deletions(-)
+ gfx/gl/AndroidSurfaceTexture.cpp              |   2 +-
+ gfx/gl/GLContextEGL.h                         |   1 +
+ gfx/gl/GLContextProviderEGL.cpp               | 100 ++++++++++++++----
+ gfx/gl/GLLibraryEGL.cpp                       |  50 ++++++---
+ gfx/gl/GLLibraryEGL.h                         |  12 ++-
+ gfx/gl/SharedSurfaceEGL.cpp                   |   3 +-
+ gfx/gl/moz.build                              |   4 +
+ .../RenderCompositorANGLE.cpp                 |   3 +-
+ toolkit/moz.configure                         |  13 +++
+ 9 files changed, 147 insertions(+), 41 deletions(-)
 
 diff --git a/gfx/gl/AndroidSurfaceTexture.cpp b/gfx/gl/AndroidSurfaceTexture.cpp
-index 30260efe32ad..d313b0527c85 100644
+index e5bd3038b5f1..4498a8b1f940 100644
 --- a/gfx/gl/AndroidSurfaceTexture.cpp
 +++ b/gfx/gl/AndroidSurfaceTexture.cpp
-@@ -82,7 +82,7 @@ class AndroidSharedBlitGL final {
+@@ -81,7 +81,7 @@ class AndroidSharedBlitGL final {
      const auto egl = gl::DefaultEglDisplay(&ignored);
      EGLConfig eglConfig;
      CreateConfig(*egl, &eglConfig, /* bpp */ 24, /* depth buffer? */ false,
@@ -46,10 +49,10 @@ index 30260efe32ad..d313b0527c85 100644
                                              true, eglConfig, &ignored);
      if (!gl) {
 diff --git a/gfx/gl/GLContextEGL.h b/gfx/gl/GLContextEGL.h
-index fcf3782f2472..fd869d3125c5 100644
+index b3318ae5daf4..84e6620c985c 100644
 --- a/gfx/gl/GLContextEGL.h
 +++ b/gfx/gl/GLContextEGL.h
-@@ -156,6 +156,7 @@ class GLContextEGL final : public GLContext {
+@@ -165,6 +165,7 @@ class GLContextEGL final : public GLContext {
  
  bool CreateConfig(EglDisplay&, EGLConfig* aConfig, int32_t aDepth,
                    bool aEnableDepthBuffer, bool aUseGles,
@@ -58,10 +61,10 @@ index fcf3782f2472..fd869d3125c5 100644
  
  }  // namespace gl
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index 252e027b63f8..04a06293b4d0 100644
+index 8931365ebee4..758ec9c5ef4e 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
-@@ -74,6 +74,11 @@
+@@ -68,6 +68,11 @@
  #include "nsThreadUtils.h"
  #include "ScopedGLHelpers.h"
  
@@ -73,7 +76,7 @@ index 252e027b63f8..04a06293b4d0 100644
  #if defined(MOZ_WIDGET_GTK)
  #  include "mozilla/widget/GtkCompositorWidget.h"
  #  if defined(MOZ_WAYLAND)
-@@ -93,6 +98,34 @@ namespace gl {
+@@ -87,6 +92,34 @@ namespace gl {
  
  using namespace mozilla::widget;
  
@@ -100,15 +103,15 @@ index 252e027b63f8..04a06293b4d0 100644
 +  }
 +#endif
 +  if (forceAccel) {
-+    return lib.CreateDisplay(true, out_failureId);
++    return lib.CreateDisplay(true, false, out_failureId);
 +  }
 +  return lib.DefaultDisplay(out_failureId);
 +}
 +
  #if defined(MOZ_WAYLAND)
- class SavedGLSurface {
+ class WaylandOffscreenGLSurface {
   public:
-@@ -118,7 +151,7 @@ void DeleteSavedGLSurface(EGLSurface surface) {
+@@ -113,7 +146,7 @@ void DeleteWaylandOffscreenGLSurface(EGLSurface surface) {
  
  static bool CreateConfigScreen(EglDisplay&, EGLConfig* const aConfig,
                                 const bool aEnableDepthBuffer,
@@ -117,16 +120,16 @@ index 252e027b63f8..04a06293b4d0 100644
  
  // append three zeros at the end of attribs list to work around
  // EGL implementation bugs that iterate until they find 0, instead of
-@@ -237,7 +270,7 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
+@@ -196,7 +229,7 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
      gfxCriticalNote << "Failed[3] to load EGL library: " << failureId.get();
      return nullptr;
    }
--  const auto egl = lib->CreateDisplay(true, &failureId);
+-  const auto egl = lib->CreateDisplay(true, false, &failureId);
 +  const auto egl = CreateDisplayForApp(*lib, true, &failureId);
    if (!egl) {
      gfxCriticalNote << "Failed[3] to create EGL library  display: "
                      << failureId.get();
-@@ -245,25 +278,34 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
+@@ -204,25 +237,34 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
    }
  
    bool doubleBuffered = true;
@@ -136,7 +139,7 @@ index 252e027b63f8..04a06293b4d0 100644
 +  // when the logical screen depth does not include alpha.
 +  const bool useAlphaConfig = true;
 +#else
-+  const bool useAlphaConfig = kIsWayland || kIsX11;
++  const bool useAlphaConfig = kIsLinux;
 +#endif
  
    EGLConfig config;
@@ -149,7 +152,7 @@ index 252e027b63f8..04a06293b4d0 100644
        gfxCriticalNote << "Failed to create EGLConfig for WebRender ANGLE!";
        return nullptr;
      }
--  } else if (kIsWayland || kIsX11) {
+-  } else if (kIsLinux) {
 +  } else if (useAlphaConfig) {
      const int bpp = 32;
 -    if (!CreateConfig(*egl, &config, bpp, false, aUseGles)) {
@@ -165,7 +168,7 @@ index 252e027b63f8..04a06293b4d0 100644
        gfxCriticalNote << "Failed to create EGLConfig!";
        return nullptr;
      }
-@@ -339,7 +381,12 @@ already_AddRefed<GLContext> GLContextEGLFactory::Create(
+@@ -298,7 +340,12 @@ already_AddRefed<GLContext> GLContextEGLFactory::Create(
  EGLSurface GLContextEGL::CreateEGLSurfaceForCompositorWidget(
      widget::CompositorWidget* aCompositorWidget, const EGLConfig aConfig) {
    nsCString discardFailureId;
@@ -179,7 +182,7 @@ index 252e027b63f8..04a06293b4d0 100644
    if (!egl) {
      gfxCriticalNote << "Failed to load EGL library 6!";
      return EGL_NO_SURFACE;
-@@ -882,7 +929,8 @@ static const EGLint kEGLConfigAttribsRGBA32[] = {
+@@ -824,7 +871,8 @@ static const EGLint kEGLConfigAttribsRGBA32[] = {
      LOCAL_EGL_ALPHA_SIZE,   8};
  
  bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
@@ -188,8 +191,8 @@ index 252e027b63f8..04a06293b4d0 100644
 +                  bool aAllowFallback) {
    EGLConfig configs[64];
    std::vector<EGLint> attribs;
-   EGLint ncfg = ArrayLength(configs);
-@@ -908,10 +956,11 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
+   EGLint ncfg = std::size(configs);
+@@ -850,10 +898,11 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
        return false;
    }
  
@@ -205,13 +208,13 @@ index 252e027b63f8..04a06293b4d0 100644
    for (const auto& cur : kTerminationAttribs) {
      attribs.push_back(cur);
    }
-@@ -983,21 +1032,24 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
+@@ -925,21 +974,24 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
  // have the value null.
  static bool CreateConfigScreen(EglDisplay& egl, EGLConfig* const aConfig,
                                 const bool aEnableDepthBuffer,
 -                               const bool aUseGles) {
 +                               const bool aUseGles, const bool aUseGles3) {
-   int32_t depth = gfxVars::ScreenDepth();
+   int32_t depth = gfxVars::PrimaryScreenDepth();
 -  if (CreateConfig(egl, aConfig, depth, aEnableDepthBuffer, aUseGles)) {
 +  if (CreateConfig(egl, aConfig, depth, aEnableDepthBuffer, aUseGles,
 +                   aUseGles3)) {
@@ -234,7 +237,7 @@ index 252e027b63f8..04a06293b4d0 100644
    }
  #endif
    return false;
-@@ -1122,7 +1174,8 @@ bool GLContextEGL::FindVisual(int* const out_visualId) {
+@@ -1064,7 +1116,8 @@ bool GLContextEGL::FindVisual(int* const out_visualId) {
    EGLConfig config;
    const int bpp = 32;
    if (!CreateConfig(*egl, &config, bpp, /* aEnableDepthBuffer */ false,
@@ -244,24 +247,31 @@ index 252e027b63f8..04a06293b4d0 100644
      // We are on a buggy driver. Do not return a visual so a fallback path can
      // be used. See https://gitlab.freedesktop.org/mesa/mesa/-/issues/149
      return false;
-@@ -1229,7 +1282,11 @@ RefPtr<GLContextEGL> GLContextEGL::CreateWithoutSurface(
- /*static*/
- already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
+@@ -1190,9 +1243,16 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
      const GLContextCreateDesc& desc, nsACString* const out_failureId) {
--  const auto display = DefaultEglDisplay(out_failureId);
-+  const auto lib = GLLibraryEGL::Get(out_failureId);
-+  if (!lib) {
-+    return nullptr;
+   bool useSoftwareDisplay =
+       static_cast<bool>(desc.flags & CreateContextFlags::FORBID_HARDWARE);
+-  const auto display = useSoftwareDisplay
+-                           ? CreateSoftwareEglDisplay(out_failureId)
+-                           : DefaultEglDisplay(out_failureId);
++  std::shared_ptr<EglDisplay> display;
++  if (useSoftwareDisplay) {
++    display = CreateSoftwareEglDisplay(out_failureId);
++  } else {
++    const auto lib = GLLibraryEGL::Get(out_failureId);
++    if (!lib) {
++      return nullptr;
++    }
++    display = CreateDisplayForApp(*lib, false, out_failureId);
 +  }
-+  const auto display = CreateDisplayForApp(*lib, false, out_failureId);
    if (!display) {
      return nullptr;
    }
 diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
-index 24926227c3ce..158b13a01700 100644
+index 4f31cd8d281c..cb77b05ad430 100644
 --- a/gfx/gl/GLLibraryEGL.cpp
 +++ b/gfx/gl/GLLibraryEGL.cpp
-@@ -166,7 +166,8 @@ static std::shared_ptr<EglDisplay> GetAndInitDisplay(
+@@ -165,7 +165,8 @@ static std::shared_ptr<EglDisplay> GetAndInitDisplay(
      const StaticMutexAutoLock& aProofOfLock) {
    const auto display = egl.fGetDisplay(displayType);
    if (!display) return nullptr;
@@ -270,8 +280,8 @@ index 24926227c3ce..158b13a01700 100644
 +                            EglDisplay::Ownership::Owned, aProofOfLock);
  }
  
- #ifdef MOZ_WAYLAND
-@@ -207,7 +208,8 @@ static std::shared_ptr<EglDisplay> GetAndInitDeviceDisplay(
+ #ifdef MOZ_WIDGET_GTK
+@@ -206,7 +207,8 @@ static std::shared_ptr<EglDisplay> GetAndInitDeviceDisplay(
      return nullptr;
    }
  
@@ -281,7 +291,7 @@ index 24926227c3ce..158b13a01700 100644
  }
  
  static std::shared_ptr<EglDisplay> GetAndInitSoftwareDisplay(
-@@ -245,7 +247,8 @@ static std::shared_ptr<EglDisplay> GetAndInitSoftwareDisplay(
+@@ -244,7 +246,8 @@ static std::shared_ptr<EglDisplay> GetAndInitSoftwareDisplay(
      return nullptr;
    }
  
@@ -291,7 +301,7 @@ index 24926227c3ce..158b13a01700 100644
  }
  
  static std::shared_ptr<EglDisplay> GetAndInitSurfacelessDisplay(
-@@ -260,7 +263,8 @@ static std::shared_ptr<EglDisplay> GetAndInitSurfacelessDisplay(
+@@ -259,7 +262,8 @@ static std::shared_ptr<EglDisplay> GetAndInitSurfacelessDisplay(
    if (display == EGL_NO_DISPLAY) {
      return nullptr;
    }
@@ -301,7 +311,7 @@ index 24926227c3ce..158b13a01700 100644
  }
  #endif
  
-@@ -295,7 +299,8 @@ static std::shared_ptr<EglDisplay> GetAndInitWARPDisplay(
+@@ -296,7 +300,8 @@ static std::shared_ptr<EglDisplay> GetAndInitWARPDisplay(
      return nullptr;
    }
  
@@ -311,7 +321,7 @@ index 24926227c3ce..158b13a01700 100644
  }
  
  std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
-@@ -328,7 +333,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+@@ -329,7 +334,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
      return nullptr;
    }
  
@@ -321,7 +331,7 @@ index 24926227c3ce..158b13a01700 100644
  
    if (!ret) {
      const EGLint err = fGetError();
-@@ -797,6 +803,7 @@ static void MarkExtensions(const char* rawExtString, bool shouldDumpExts,
+@@ -815,6 +821,7 @@ static void MarkExtensions(const char* rawExtString, bool shouldDumpExts,
  // static
  std::shared_ptr<EglDisplay> EglDisplay::Create(
      GLLibraryEGL& lib, const EGLDisplay display, const bool isWarp,
@@ -329,7 +339,7 @@ index 24926227c3ce..158b13a01700 100644
      const StaticMutexAutoLock& aProofOfLock) {
    // Retrieve the EglDisplay if it already exists
    {
-@@ -804,20 +811,28 @@ std::shared_ptr<EglDisplay> EglDisplay::Create(
+@@ -822,20 +829,28 @@ std::shared_ptr<EglDisplay> EglDisplay::Create(
      if (itr != lib.mActiveDisplays.end()) {
        const auto ret = itr->second.lock();
        if (ret) {
@@ -361,7 +371,7 @@ index 24926227c3ce..158b13a01700 100644
    // Insert if there is no existing display entry, or assign if there is an
    // expired weak_ptr that failed to lock above and was awaiting removal.
    lib.mActiveDisplays.insert_or_assign(display, ret);
-@@ -825,8 +840,12 @@ std::shared_ptr<EglDisplay> EglDisplay::Create(
+@@ -843,8 +858,12 @@ std::shared_ptr<EglDisplay> EglDisplay::Create(
  }
  
  EglDisplay::EglDisplay(const PrivateUseOnly&, GLLibraryEGL& lib,
@@ -375,8 +385,8 @@ index 24926227c3ce..158b13a01700 100644
 +      mOwnership(ownership) {
    const bool shouldDumpExts = GLContext::ShouldDumpExts();
  
-   auto rawExtString =
-@@ -877,7 +896,9 @@ EglDisplay::~EglDisplay() {
+   auto rawExtString = mLib->fQueryString(mDisplay, LOCAL_EGL_EXTENSIONS);
+@@ -893,7 +912,9 @@ EglDisplay::~EglDisplay() {
    if (itr != mLib->mActiveDisplays.end() && !itr->second.expired()) {
      return;
    }
@@ -387,8 +397,8 @@ index 24926227c3ce..158b13a01700 100644
    mLib->mActiveDisplays.erase(mDisplay);
  }
  
-@@ -900,7 +921,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
-   return CreateDisplayLocked(forceAccel, out_failureId, lock);
+@@ -917,7 +938,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+   return CreateDisplayLocked(forceAccel, forceSoftware, out_failureId, lock);
  }
  
 -std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
@@ -396,7 +406,7 @@ index 24926227c3ce..158b13a01700 100644
      const EGLDisplay display, nsACString* const out_failureId) {
    if (!display) {
      if (out_failureId && out_failureId->IsEmpty()) {
-@@ -910,7 +931,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+@@ -927,7 +948,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
    }
  
    StaticMutexAutoLock lock(sMutex);
@@ -407,12 +417,12 @@ index 24926227c3ce..158b13a01700 100644
      *out_failureId = "FEATURE_FAILURE_EGL_DISPLAY"_ns;
    }
 diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
-index 5cf95aae9406..79273ea57f77 100644
+index 2375865fb938..ad9e110215f6 100644
 --- a/gfx/gl/GLLibraryEGL.h
 +++ b/gfx/gl/GLLibraryEGL.h
-@@ -159,8 +159,8 @@ class GLLibraryEGL final {
+@@ -160,8 +160,8 @@ class GLLibraryEGL final {
  
-   std::shared_ptr<EglDisplay> CreateDisplay(bool forceAccel,
+   std::shared_ptr<EglDisplay> CreateDisplay(bool forceAccel, bool forceSoftware,
                                              nsACString* const out_failureId);
 -  std::shared_ptr<EglDisplay> CreateDisplay(EGLDisplay display,
 -                                            nsACString* const out_failureId);
@@ -421,7 +431,7 @@ index 5cf95aae9406..79273ea57f77 100644
    std::shared_ptr<EglDisplay> CreateDisplay(ID3D11Device*);
    std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
  
-@@ -698,9 +698,12 @@ class GLLibraryEGL final {
+@@ -711,9 +711,12 @@ class GLLibraryEGL final {
  
  class EglDisplay final {
   public:
@@ -434,7 +444,7 @@ index 5cf95aae9406..79273ea57f77 100644
  
   private:
    std::bitset<UnderlyingValue(EGLExtension::Max)> mAvailableExtensions;
-@@ -709,11 +712,12 @@ class EglDisplay final {
+@@ -724,11 +727,12 @@ class EglDisplay final {
  
   public:
    static std::shared_ptr<EglDisplay> Create(
@@ -450,10 +460,10 @@ index 5cf95aae9406..79273ea57f77 100644
   public:
    ~EglDisplay();
 diff --git a/gfx/gl/SharedSurfaceEGL.cpp b/gfx/gl/SharedSurfaceEGL.cpp
-index 09659ba519c1..85a45869b8db 100644
+index fc4a2b6465e8..1a2dc57ba69e 100644
 --- a/gfx/gl/SharedSurfaceEGL.cpp
 +++ b/gfx/gl/SharedSurfaceEGL.cpp
-@@ -27,7 +27,8 @@ static bool HasEglImageExtensions(const GLContextEGL& gl) {
+@@ -26,7 +26,8 @@ static bool HasEglImageExtensions(const GLContextEGL& gl) {
    const auto& egl = *(gl.mEgl);
    return egl.HasKHRImageBase() &&
           egl.IsExtensionSupported(EGLExtension::KHR_gl_texture_2D_image) &&
@@ -464,16 +474,56 @@ index 09659ba519c1..85a45869b8db 100644
  }
  
 diff --git a/gfx/gl/moz.build b/gfx/gl/moz.build
-index bf5b0d5fdd96..81af6ee30292 100644
+index 8f56a01c0b1f..00e8da53d9f6 100644
 --- a/gfx/gl/moz.build
 +++ b/gfx/gl/moz.build
-@@ -159,6 +159,9 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+@@ -152,6 +152,10 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
      CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
      CFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
  
 +if CONFIG["MOZ_WIDGET_TOOLKIT"] == "qt":
 +    CXXFLAGS += CONFIG["MOZ_QT_CFLAGS"]
++    CXXFLAGS += CONFIG["MOZ_QT_GUI_PRIVATE_CFLAGS"]
 +
- CXXFLAGS += ["-Werror=switch"]
+ COMPILE_FLAGS["WARNINGS_CXXFLAGS"] += ["-Werror=switch"]
  
  if CONFIG["MOZ_WAYLAND"]:
+diff --git a/gfx/webrender_bindings/RenderCompositorANGLE.cpp b/gfx/webrender_bindings/RenderCompositorANGLE.cpp
+index 6c73f6d1588b..2d2bafeda773 100644
+--- a/gfx/webrender_bindings/RenderCompositorANGLE.cpp
++++ b/gfx/webrender_bindings/RenderCompositorANGLE.cpp
+@@ -115,7 +115,8 @@ bool RenderCompositorANGLE::Initialize(nsACString& aError) {
+   const auto& gle = gl::GLContextEGL::Cast(mGL);
+   const auto& egl = gle->mEgl;
+   if (!gl::CreateConfig(*egl, &mEGLConfig, /* bpp */ 32,
+-                        /* enableDepthBuffer */ false, mGL->IsGLES())) {
++                        /* enableDepthBuffer */ false, mGL->IsGLES(),
++                        mGL->IsGLES() && mGL->Version() >= 300)) {
+     aError.Assign("RcANGLE(create EGLConfig failed)"_ns);
+     return false;
+   }
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 65eda6f5804f..8ce1723015fe 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -636,7 +636,20 @@ with only_when(toolkit_qt):
+                 libs.extend(package.libs)
+         return namespace(cflags=cflags, libs=libs)
+ 
++    @depends(qt_base, pkg_config, pkg_config_env)
++    @checking("for QtGui private header flags", callback=lambda flags: " ".join(flags))
++    def qt_gui_private_cflags(qt_base, pkg_config, env):
++        version = check_cmd_output(
++            pkg_config, "--modversion", "Qt5Gui", env=env
++        ).strip()
++        for flag in qt_base.cflags:
++            if flag.startswith("-I") and flag.rstrip("/").endswith("/QtGui"):
++                include_dir = flag[2:].rstrip("/")
++                return ("-I{}/{}/QtGui".format(include_dir, version),)
++        die("Could not determine the QtGui private header path")
++
+     set_config("MOZ_QT_CFLAGS", qt_build_flags.cflags)
++    set_config("MOZ_QT_GUI_PRIVATE_CFLAGS", qt_gui_private_cflags)
+     set_config("MOZ_QT_LIBS", qt_build_flags.libs)
+     set_config("MOZ_ENABLE_QMSYSTEM2", True, when=qmsystem2)
+     set_define("MOZ_ENABLE_QMSYSTEM2", True, when=qmsystem2)

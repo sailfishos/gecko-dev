@@ -9,6 +9,7 @@
 #define mozilla_embedlite_PuppetWidgetBase_h__
 
 #include "nsBaseWidget.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
 
@@ -35,7 +36,6 @@ public:
 
   using nsBaseWidget::Create; // for Create signature not overridden here
   [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
-                                       nsNativeWidget    aNativeParent,
                                        const LayoutDeviceIntRect& aRect,
                                        widget::InitData* aInitData = nullptr) override;
 
@@ -66,18 +66,14 @@ public:
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 
-  virtual void SetParent(nsIWidget* aNewParent) override;
-  virtual nsIWidget* GetParent(void) override;
-
   virtual void CaptureRollupEvents(bool aDoCapture) override;
-
-  virtual void ReparentNativeWidget(nsIWidget* aNewParent) override;
 
   void SetRotation(mozilla::ScreenRotation);
   void SetMargins(const LayoutDeviceIntMargin& margins);
   void UpdateBounds(bool aRepaint);
-  virtual mozilla::ScreenIntMargin GetSafeAreaInsets() const override;
-  void SetSafeAreaInsets(const mozilla::ScreenIntMargin& aSafeAreaInsets);
+  virtual mozilla::LayoutDeviceIntMargin GetSafeAreaInsets() const override;
+  void SetSafeAreaInsets(
+      const mozilla::LayoutDeviceIntMargin& aSafeAreaInsets);
   void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
 
@@ -89,6 +85,8 @@ public:
 
 protected:
   virtual ~PuppetWidgetBase() override;
+
+  void DidClearParent(nsIWidget* aOldParent) override;
 
   typedef nsTArray<PuppetWidgetBase*> ChildrenArray;
   typedef nsTArray<EmbedLitePuppetWidgetObserver*> ObserverArray;
@@ -104,14 +102,32 @@ protected:
   ChildrenArray mChildren;
   ObserverArray mObservers;
 
-  PuppetWidgetBase* mParent;
   mozilla::ScreenRotation mRotation;
   LayoutDeviceIntRect mNaturalBounds;
   LayoutDeviceIntMargin mMargins;
-  mozilla::ScreenIntMargin mSafeAreaInsets;
+  mozilla::LayoutDeviceIntMargin mSafeAreaInsets;
 
 private:
+  class WidgetPaintTask final : public Runnable
+  {
+  public:
+    NS_DECL_NSIRUNNABLE
+
+    explicit WidgetPaintTask(PuppetWidgetBase* aWidget)
+      : Runnable("PuppetWidgetBase::WidgetPaintTask")
+      , mWidget(aWidget)
+    {
+    }
+
+    void Revoke() { mWidget = nullptr; }
+
+  private:
+    PuppetWidgetBase* mWidget;
+  };
+
+  void Paint();
   bool IsTopLevel();
+  nsRevocableEventPtr<WidgetPaintTask> mWidgetPaintTask;
   nsSizeMode mSizeMode;
 };
 

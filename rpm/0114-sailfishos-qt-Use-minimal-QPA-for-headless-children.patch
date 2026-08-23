@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 12 Aug 2026 17:42:50 +0200
+Subject: [sailfishos][qt] Use minimal QPA for headless children
+
+Gecko marks sandboxed content processes headless when display-server access
+is blocked. Honor that contract when creating the Qt application so children
+retain QGuiApplication services without trying to connect to Wayland.
+---
+ toolkit/xre/nsQAppInstance.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/toolkit/xre/nsQAppInstance.cpp b/toolkit/xre/nsQAppInstance.cpp
+index d6035bc34799..9e7acb5955aa 100644
+--- a/toolkit/xre/nsQAppInstance.cpp
++++ b/toolkit/xre/nsQAppInstance.cpp
+@@ -4,9 +4,12 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
++#include <QByteArray>
+ #include <QGuiApplication>
++
+ #include "nsQAppInstance.h"
+ #include "nsXPCOMPrivate.h"
++#include "prenv.h"
+ 
+ QGuiApplication *nsQAppInstance::sQAppInstance = nullptr;
+ int nsQAppInstance::sQAppRefCount = 0;
+@@ -15,6 +18,9 @@ void nsQAppInstance::AddRef(int& aArgc, char** aArgv) {
+   if (qApp)
+     return;
+   if (!sQAppInstance) {
++    if (PR_GetEnv("MOZ_HEADLESS")) {
++      qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("minimal"));
++    }
+     mozilla::SetICUMemoryFunctions();
+     sQAppInstance = new QGuiApplication(aArgc, aArgv);
+   }

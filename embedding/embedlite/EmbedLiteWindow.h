@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "mozilla/Types.h"
 #include "nsRect.h"
 #include <functional>
 
@@ -27,6 +28,76 @@ enum ScreenRotation {
 class EmbedLiteApp;
 class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
+class EmbedLiteChromeInputSession;
+class EmbedLiteChromeContentSession;
+class EmbedLiteChromeSession;
+class EmbedLiteChromeTabSession;
+
+enum class PlatformImageHandleType : uint8_t {
+  EGLImage
+};
+
+enum class PlatformImageTextureTarget : uint8_t {
+  Texture2D,
+  ExternalOES
+};
+
+struct PlatformImageDescriptor final {
+  PlatformImageHandleType handleType;
+  void* handle;
+  PlatformImageTextureTarget textureTarget;
+  int32_t width;
+  int32_t height;
+};
+
+using PlatformImageCallback =
+  std::function<void(const PlatformImageDescriptor&)>;
+
+struct PlatformFrameToken final {
+  uint64_t epoch;
+  uint64_t sequence;
+
+  bool IsValid() const { return epoch != 0 && sequence != 0; }
+  bool operator==(const PlatformFrameToken& other) const {
+    return epoch == other.epoch && sequence == other.sequence;
+  }
+};
+
+enum class PlatformFrameFenceHandleType : uint8_t {
+  NoHandle,
+  EGLSync
+};
+
+struct PlatformFrameDescriptor final {
+  PlatformFrameToken token;
+  PlatformImageDescriptor image;
+  PlatformFrameFenceHandleType releaseFenceHandleType;
+};
+
+struct PlatformFrameRelease final {
+  PlatformFrameToken token;
+  PlatformFrameFenceHandleType fenceHandleType;
+  void* fenceHandle;
+};
+
+using PlatformFrameCallback =
+  std::function<bool(const PlatformFrameDescriptor&)>;
+
+class EmbedLitePlatformFrameListener
+{
+public:
+  // A new tokenized platform frame is available. This is called directly
+  // from Gecko's render thread. Consumers must schedule acquisition on their
+  // own render thread rather than acquiring from this callback.
+  virtual void PlatformFrameReady(const PlatformFrameToken&) = 0;
+
+  // All tokenized frames have been retired after delivery was disabled.
+  // This is called directly from Gecko's render thread.
+  virtual void PlatformFrameDeliveryStopped() = 0;
+
+protected:
+  virtual ~EmbedLitePlatformFrameListener() = default;
+};
 
 class EmbedLiteWindowListener
 {
@@ -53,22 +124,70 @@ public:
   virtual bool PreRender() { return true; }
 };
 
+class EmbedLiteChromeWindowListener
+{
+public:
+  // Called when the opt-in Gecko chrome AppWindow could not be created. The
+  // regular WindowDestroyed callback follows after asynchronous teardown.
+  virtual void ChromeWindowInitializationFailed() = 0;
+
+protected:
+  virtual ~EmbedLiteChromeWindowListener() = default;
+};
+
 class EmbedLiteWindow {
 public:
   EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id);
+  EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id,
+                  bool chromeHosted);
 
   // PEmbedLiteWindow:
   virtual void SetSize(int width, int height);
 
   virtual uint32_t GetUniqueID() const;
+  bool IsChromeHosted() const;
+
+  // Returns a borrowed session only for windows created with
+  // CreateChromeWindow(). The pointer becomes invalid when the window is
+  // destroyed and does not change EmbedLiteWindow's legacy ABI.
+  MOZ_EXPORT EmbedLiteChromeInputSession* GetChromeInputSession();
+  MOZ_EXPORT EmbedLiteChromeContentSession* GetChromeContentSession();
+  MOZ_EXPORT EmbedLiteChromeSession* GetChromeSession();
+  MOZ_EXPORT EmbedLiteChromeTabSession* GetChromeTabSession();
 
   virtual void SetContentOrientation(mozilla::embedlite::ScreenRotation);
   virtual void ScheduleUpdate();
   virtual void SuspendRendering();
   virtual void ResumeRendering();
-  virtual void* GetPlatformImage(int* width, int* height);
-  virtual void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  // The descriptor and its handle are borrowed for the duration of the
+  // synchronous callback. Consumers must import the handle before returning.
+  virtual bool WithPlatformImage(const PlatformImageCallback& callback);
   virtual void ClearPlatformImage();
+
+  // Acquiring a frame pins its exact image until ReleasePlatformFrame. The
+  // consumer must release every accepted frame before destroying the window.
+  MOZ_EXPORT bool AcquirePlatformFrame(
+    const PlatformFrameToken& token,
+    const PlatformFrameCallback& callback);
+  // Release is valid only after AcquirePlatformFrame returns true. Fence
+  // ownership transfers to Gecko only when this returns true. NoHandle
+  // requires a null handle and means that no GPU reads remain outstanding.
+  // An EGLSync must be created on the compatible EGLDisplay after the last
+  // sampling draw, and the consumer must flush its GL context before release.
+  MOZ_EXPORT bool ReleasePlatformFrame(
+    const PlatformFrameRelease& release);
+  // Token notifications are disabled by default so legacy consumers retain
+  // their existing frame and teardown behavior. After disabling an enabled
+  // stream, release every acquired token and wait for
+  // PlatformFrameDeliveryStopped before destroying the window or listener.
+  // Disable while the compositor and WebRender bridge are still alive. If
+  // rendering infrastructure is already shutting down, do not time out or
+  // destroy the window, listener, or consumer resources; keep them alive
+  // until PlatformFrameDeliveryStopped arrives.
+  MOZ_EXPORT bool SetPlatformFrameDeliveryEnabled(bool enabled);
+  // The listener is not owned and must remain alive until delivery stops.
+  MOZ_EXPORT bool SetPlatformFrameListener(
+    EmbedLitePlatformFrameListener* listener);
 
 protected:
   friend class EmbedLiteApp;

@@ -4,12 +4,78 @@
 
 include protocol PEmbedLiteApp;
 
+include "ipc/nsGUIEventIPC.h";
 include "mozilla/GfxMessageUtils.h";
 
 using gfxSize from "gfxPoint.h";
+using class mozilla::MultiTouchInput from "InputData.h";
 
 namespace mozilla {
 namespace embedlite {
+
+struct EmbedLiteChromeHistoryData {
+  nsCString location;
+  nsString title;
+};
+
+struct EmbedLiteChromeTabRestoreData {
+  uint64_t persistentId;
+  EmbedLiteChromeHistoryData[] history;
+  int32_t selectedHistoryIndex;
+};
+
+struct EmbedLiteChromeTabData {
+  uint64_t id;
+  uint64_t persistentId;
+  uint64_t locationRevision;
+  nsCString location;
+  nsString title;
+  bool loading;
+  bool closing;
+  bool discarded;
+  bool canGoBack;
+  bool canGoForward;
+  int32_t progress;
+  int64_t current;
+  int64_t total;
+};
+
+struct EmbedLiteChromeSessionData {
+  uint64_t revision;
+  uint64_t selectedTabId;
+  EmbedLiteChromeTabData[] tabs;
+};
+
+struct EmbedLiteChromeBeforeUnloadData {
+  uint64_t requestId;
+  uint64_t tabId;
+  uint64_t persistentId;
+  nsString title;
+  nsString text;
+  nsString leaveLabel;
+  nsString stayLabel;
+};
+
+struct EmbedLiteChromeContentStateData {
+  uint64_t tabId;
+  uint64_t persistentId;
+  uint64_t revision;
+  uint64_t locationRevision;
+  nsCString securityStatus;
+  uint32_t securityState;
+  bool fullscreen;
+  bool firstPaint;
+  int32_t firstPaintX;
+  int32_t firstPaintY;
+  uint32_t scrollWidth;
+  uint32_t scrollHeight;
+  int32_t scrollX;
+  int32_t scrollY;
+  double viewportX;
+  double viewportY;
+  double viewportWidth;
+  double viewportHeight;
+};
 
 [NestedUpTo=inside_cpow] sync protocol PEmbedLiteWindow {
   manager PEmbedLiteApp;
@@ -17,10 +83,83 @@ namespace embedlite {
 child:
   async SetSize(gfxSize aSize);
   async SetContentOrientation(uint32_t aRotation);
+  async LoadURL(nsCString aURL, bool aFromExternal);
+  async GoBack(bool aRequireUserInteraction, bool aUserActivation);
+  async GoForward(bool aRequireUserInteraction, bool aUserActivation);
+  async StopLoad();
+  async Reload(bool aHardReload);
+  async RestoreTabs(EmbedLiteChromeTabRestoreData[] aTabs,
+                    int32_t aSelectedTabIndex);
+  async NewTab(nsCString aURL, uint64_t aPersistentId, bool aFromExternal,
+               bool aInBackground);
+  async AssociateTab(uint64_t aTabId, uint64_t aPersistentId);
+  async SelectTab(uint64_t aTabId);
+  async CloseTab(uint64_t aTabId);
+  async ResolveBeforeUnloadPrompt(uint64_t aRequestId, uint64_t aTabId,
+                                  bool aPermit);
+  async LoadContentFrameScript(nsCString aURI);
+  async AddContentMessageListener(nsCString aName);
+  async RemoveContentMessageListener(nsCString aName);
+  async SendContentAsyncMessage(uint64_t aTabId, nsString aName,
+                                nsString aJSON);
+  async SendContentMouseEvent(uint64_t aTabId, uint8_t aType,
+                              int32_t aX, int32_t aY, uint64_t aTime,
+                              uint32_t aButton, uint32_t aButtons,
+                              uint32_t aModifiers, uint32_t aClickCount);
+  async SendContentWheelEvent(uint64_t aTabId, int32_t aX, int32_t aY,
+                              uint64_t aTime, double aDeltaX,
+                              double aDeltaY, uint32_t aDeltaMode,
+                              uint32_t aModifiers);
+  async ContentScrollTo(uint64_t aTabId, int32_t aX, int32_t aY);
+  async ContentScrollBy(uint64_t aTabId, int32_t aX, int32_t aY);
+  async ContentZoomToRect(uint64_t aTabId, float aX, float aY,
+                          float aWidth, float aHeight);
+  async SetContentDesktopMode(uint64_t aTabId, bool aDesktopMode);
+  async SetContentThrottlePainting(uint64_t aTabId, bool aThrottle);
+  async SuspendContentTimeouts(uint64_t aTabId);
+  async ResumeContentTimeouts(uint64_t aTabId);
+  async SetContentHttpUserAgent(uint64_t aTabId, nsString aUserAgent);
+  async SetContentMargins(uint64_t aTabId, int32_t aTop, int32_t aRight,
+                          int32_t aBottom, int32_t aLeft);
+  async SetContentSafeAreaInsets(uint64_t aTabId, int32_t aTop,
+                                 int32_t aRight, int32_t aBottom,
+                                 int32_t aLeft);
+  async SetContentDynamicToolbarHeight(uint64_t aTabId, int32_t aHeight);
+  async SetContentScreenProperties(int32_t aDepth, float aDensity,
+                                   float aDpi);
+  async SetActive(bool aActive);
+  async SetFocused(bool aFocused);
+  async HandleTextEvent(nsCString aCommit, nsCString aPreEdit,
+                        int32_t aReplacementStart,
+                        int32_t aReplacementLength);
+  async HandleKeyPressEvent(int32_t aDomKeyCode, int32_t aModifiers,
+                            int32_t aCharCode);
+  async HandleKeyReleaseEvent(int32_t aDomKeyCode, int32_t aModifiers,
+                              int32_t aCharCode);
+  async ReceiveInputEvent(MultiTouchInput aEvent);
   async Destroy();
 
 parent:
-  async Initialized();
+  async Initialized(bool success);
+  async OnLocationChanged(nsCString aLocation, bool aCanGoBack,
+                          bool aCanGoForward);
+  async OnLoadStarted(nsCString aLocation);
+  async OnLoadFinished();
+  async OnLoadProgress(int32_t aProgress, int64_t aCurrent, int64_t aTotal);
+  async OnTitleChanged(nsString aTitle);
+  async OnTabSnapshot(EmbedLiteChromeSessionData aSnapshot);
+  async OnBeforeUnloadPrompt(EmbedLiteChromeBeforeUnloadData aPrompt);
+  async OnTabCloseResult(uint64_t aTabId, bool aClosed);
+  async OnContentStateChanged(EmbedLiteChromeContentStateData aState);
+  async OnContentAsyncMessage(uint64_t aTabId, uint64_t aPersistentId,
+                              uint64_t aLocationRevision,
+                              nsString aName, nsString aJSON);
+  async OnContentWindowCloseRequested(uint64_t aTabId,
+                                      uint64_t aPersistentId);
+  async OnInputContextChanged(int32_t aEnabled, int32_t aOpen,
+                              nsString aInputType, nsString aInputMode,
+                              nsString aActionHint, int32_t aCause,
+                              int32_t aFocusChange);
   async Destroyed();
   async __delete__();
 };

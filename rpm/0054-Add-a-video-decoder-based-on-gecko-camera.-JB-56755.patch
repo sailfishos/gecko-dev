@@ -3,32 +3,55 @@ From: Denis Grigorev <d.grigorev@omprussia.ru>
 Date: Wed, 17 Jun 2026 12:55:21 +0200
 Subject: Add a video decoder based on gecko-camera. JB#56755
 
-Adds the Gecko integration for a video decoder plugin that makes use of gecko-camera. The decoder implementation lives in the package-level gecko-camera-decoder tree and is linked into dom/media/platforms for Gecko builds.
+Add the Gecko integration for the package-level gecko-camera decoder and
+link its sources into the media platform build.
+
+Initialize and register it in the default, RDD, and content process paths.
+Keep remote content decoders ahead of the local hardware fallback.
 ---
- dom/media/platforms/PDMFactory.cpp       | 13 +++++++++++++
+ dom/media/platforms/PDMFactory.cpp       | 33 ++++++++++++++++++++++++
  dom/media/platforms/gecko-camera         |  1 +
- dom/media/platforms/moz.build            | 11 +++++++++++
- modules/libpref/init/StaticPrefList.yaml | 13 +++++++++++++
- 4 files changed, 38 insertions(+)
+ dom/media/platforms/moz.build            | 11 ++++++++
+ modules/libpref/init/StaticPrefList.yaml | 13 ++++++++++
+ 4 files changed, 58 insertions(+)
  create mode 120000 dom/media/platforms/gecko-camera
 
 diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
-index 49d9e835f74a..b1c2186e2ad9 100644
+index 6af74f901df0..e44e10c1d59a 100644
 --- a/dom/media/platforms/PDMFactory.cpp
 +++ b/dom/media/platforms/PDMFactory.cpp
-@@ -64,6 +64,10 @@
+@@ -53,6 +53,9 @@
  #ifdef MOZ_OMX
  #  include "OmxDecoderModule.h"
  #endif
 +#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
 +#  include "gecko-camera/GeckoCameraDecoderModule.h"
 +#endif
-+
- 
  #include <functional>
  
-@@ -194,6 +198,9 @@ class PDMInitializer final {
+ #include "FFVPXRuntimeLinker.h"
+@@ -105,6 +108,9 @@ class PDMInitializer final {
+     }
  #endif
+     FFVPXRuntimeLinker::Init();
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++    GeckoCameraDecoderModule::Init();
++#endif
+   }
+ 
+   static void InitUtilityPDMs() {
+@@ -161,6 +167,9 @@ class PDMInitializer final {
+     }
+ #endif  // !defined(MOZ_WIDGET_ANDROID)
+ 
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++    GeckoCameraDecoderModule::Init();
++#endif
+     RemoteMediaManagerChild::Init();
+   }
+ 
+@@ -177,6 +186,9 @@ class PDMInitializer final {
+     FFVPXRuntimeLinker::Init();
  #ifdef MOZ_FFMPEG
      FFmpegRuntimeLinker::Init();
 +#endif
@@ -37,18 +60,47 @@ index 49d9e835f74a..b1c2186e2ad9 100644
  #endif
    }
  
-@@ -735,6 +742,12 @@ void PDMFactory::CreateDefaultPDMs() {
-                StaticPrefs::media_android_media_codec_preferred());
+@@ -581,6 +593,12 @@ void PDMFactory::CreateRddPDMs() {
+     mFailureFlags += GetFailureFlagBasedOnFFmpegStatus(
+         FFmpegRuntimeLinker::LinkStatusCode());
+   }
++#endif
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  if (StaticPrefs::media_gecko_camera_codec_enabled()) {
++    StartupPDM(GeckoCameraDecoderModule::Create(),
++               StaticPrefs::media_gecko_camera_codec_preferred());
++  }
+ #endif
+   StartupPDM(AgnosticDecoderModule::Create(),
+              StaticPrefs::media_prefer_non_ffvpx());
+@@ -667,6 +685,14 @@ void PDMFactory::CreateContentPDMs() {
    }
  #endif
+ 
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  if (StaticPrefs::media_gecko_camera_codec_enabled()) {
++    // Keep remote decoders first, but prefer gecko-camera over local software
++    // decoder modules when content-process fallback is used.
++    StartupPDM(GeckoCameraDecoderModule::Create());
++  }
++#endif
++
+ #if !defined(MOZ_WIDGET_ANDROID)  // Still required for video?
+   if (StaticPrefs::media_allow_audio_non_utility()) {
+ #endif  // !defined(MOZ_WIDGET_ANDROID)
+@@ -762,6 +788,13 @@ void PDMFactory::CreateDefaultPDMs() {
+   }
+ #endif
+ 
 +#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
 +  if (StaticPrefs::media_gecko_camera_codec_enabled()) {
 +    StartupPDM(GeckoCameraDecoderModule::Create(),
 +               StaticPrefs::media_gecko_camera_codec_preferred());
 +  }
 +#endif
- 
-   CreateAndStartupPDM<AgnosticDecoderModule>();
++
+   StartupPDM(AgnosticDecoderModule::Create(),
+              StaticPrefs::media_prefer_non_ffvpx());
  
 diff --git a/dom/media/platforms/gecko-camera b/dom/media/platforms/gecko-camera
 new file mode 120000
@@ -59,10 +111,10 @@ index 000000000000..215967f59e8c
 +../../../../gecko-camera-decoder
 \ No newline at end of file
 diff --git a/dom/media/platforms/moz.build b/dom/media/platforms/moz.build
-index c71f22a22eee..776b83648287 100644
+index 1bd4af56f2a2..cc81530596a4 100644
 --- a/dom/media/platforms/moz.build
 +++ b/dom/media/platforms/moz.build
-@@ -135,6 +135,17 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+@@ -130,6 +130,17 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
          "/media/libyuv/libyuv/include",
      ]
  
@@ -81,10 +133,10 @@ index c71f22a22eee..776b83648287 100644
  
  # Add libFuzzer configuration directives
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 13e75da963ac..c900d851198a 100644
+index 4b970f52ff0b..ee9e33d02807 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -10206,6 +10206,19 @@
+@@ -12600,6 +12600,19 @@
      mirror: always
  #endif  # ANDROID
  
@@ -101,6 +153,6 @@ index 13e75da963ac..c900d851198a 100644
 +    mirror: always
 +#endif  # MOZ_EMBEDLITE
 +
- #ifdef MOZ_OMX
- -   name: media.omx.enabled
-     type: bool
+ # Now we will completely disable the ability to perform audio decoding outside
+ # of Utility.
+ -   name: media.allow-audio-non-utility

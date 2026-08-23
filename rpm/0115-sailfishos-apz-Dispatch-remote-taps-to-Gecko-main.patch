@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 13 Aug 2026 10:20:00 +0200
+Subject: [sailfishos][apz] Dispatch remote taps to Gecko main
+
+EmbedLite runs APZ on the Qt UI thread while Gecko's main thread is a
+separate embedded thread. RemoteContentController assumed that Android was
+the only configuration with a non-Gecko-main APZ controller thread, leaving
+the non-Android branch as a debug assertion and silently dropping taps in
+release builds.
+
+Dispatch Qt taps to Gecko's main thread before accessing BrowserParent, as
+the other in-process RemoteContentController callbacks do.
+---
+ gfx/layers/ipc/RemoteContentController.cpp | 20 ++++++++++++++++----
+ 1 file changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/gfx/layers/ipc/RemoteContentController.cpp b/gfx/layers/ipc/RemoteContentController.cpp
+index 016e761d926b..5bf151429dc9 100644
+--- a/gfx/layers/ipc/RemoteContentController.cpp
++++ b/gfx/layers/ipc/RemoteContentController.cpp
+@@ -124,10 +124,7 @@ void RemoteContentController::HandleTap(
+     HandleTapOnParentProcessMainThread(aTapType, aPoint, aModifiers, aGuid,
+                                        aInputBlockId, aDoubleTapToZoomMetrics);
+   } else {
+-    // We must be on Android, running on the Java UI thread
+-#ifndef MOZ_WIDGET_ANDROID
+-    MOZ_ASSERT(false);
+-#else
++#ifdef MOZ_WIDGET_ANDROID
+     // We don't want to get the BrowserParent or call
+     // BrowserParent::SendHandleTap() from a non-main thread, so we need to
+     // redispatch to the main thread. However, we should use the same
+@@ -145,6 +142,21 @@ void RemoteContentController::HandleTap(
+         this, &RemoteContentController::HandleTapOnParentProcessMainThread,
+         aTapType, aPoint, aModifiers, aGuid, aInputBlockId,
+         aDoubleTapToZoomMetrics));
++#elif defined(MOZ_WIDGET_QT)
++    // EmbedLite runs APZ on the Qt UI thread while Gecko's main thread is a
++    // separate embedded thread. Dispatch through Gecko's main-thread queue,
++    // the same queue used to return transformed input, before accessing
++    // BrowserParent.
++    NS_DispatchToMainThread(NewRunnableMethod<TapType, LayoutDevicePoint,
++                                              Modifiers, ScrollableLayerGuid,
++                                              uint64_t,
++                                              Maybe<DoubleTapToZoomMetrics>>(
++        "layers::RemoteContentController::HandleTapOnParentProcessMainThread",
++        this, &RemoteContentController::HandleTapOnParentProcessMainThread,
++        aTapType, aPoint, aModifiers, aGuid, aInputBlockId,
++        aDoubleTapToZoomMetrics));
++#else
++    MOZ_ASSERT(false);
+ #endif
+   }
+ }

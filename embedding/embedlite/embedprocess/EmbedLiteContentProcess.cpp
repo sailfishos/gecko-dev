@@ -7,6 +7,12 @@
 #include "nsIFile.h"
 #include "nsXPCOM.h"
 #include "nsXULAppAPI.h"
+#include "nsAppRunner.h"
+#include "nsCategoryManagerUtils.h"
+
+#include "mozilla/GeckoArgs.h"
+#include "mozilla/Omnijar.h"
+#include "mozilla/ipc/ProcessUtils.h"
 
 #include "EmbedLiteContentProcess.h"
 #include "EmbedLiteAppProcessChild.h"
@@ -14,9 +20,26 @@
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteContentProcess::EmbedLiteContentProcess(ProcessId aParentHandle,
-                                                 const nsID& aMessageChannelId)
-  : ProcessChild(aParentHandle, aMessageChannelId)
+static nsresult GetGREDir(nsIFile** aResult)
+{
+  nsCOMPtr<nsIFile> current;
+  nsresult rv = XRE_GetBinaryPath(getter_AddRefs(current));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsIFile> parent;
+  rv = current->GetParent(getter_AddRefs(parent));
+  NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_TRUE(parent, NS_ERROR_UNEXPECTED);
+
+  parent.forget(aResult);
+  return NS_OK;
+}
+
+EmbedLiteContentProcess::EmbedLiteContentProcess(
+    IPC::Channel::ChannelHandle aClientChannel,
+    ProcessId aParentHandle,
+    const nsID& aMessageChannelId)
+  : ProcessChild(std::move(aClientChannel), aParentHandle, aMessageChannelId)
 {
   mContent = new EmbedLiteAppProcessChild();
 }
@@ -26,33 +49,67 @@ EmbedLiteContentProcess::~EmbedLiteContentProcess()
   delete mContent;
 }
 
-void
-EmbedLiteContentProcess::SetAppDir(const nsACString& aPath)
-{
-  mAppDir.Assign(aPath);
-}
-
 bool
 EmbedLiteContentProcess::Init(int aArgc, char* aArgv[])
 {
-  (void)aArgc;
-  (void)aArgv;
-
   LOGT();
-  mContent->Init(ParentPid(), TakeInitialEndpoint());
+
+  Maybe<const char*> parentBuildID =
+      geckoargs::sParentBuildID.Get(aArgc, aArgv);
+  if (parentBuildID.isNothing()) {
+    return false;
+  }
+
+  Maybe<mozilla::ipc::ReadOnlySharedMemoryHandle> jsInitHandle =
+      geckoargs::sJsInitHandle.Get(aArgc, aArgv);
 
   nsCOMPtr<nsIFile> appDir;
-  if (!mAppDir.IsEmpty()) {
-    nsresult rv = XRE_GetFileFromPath(mAppDir.get(), getter_AddRefs(appDir));
-    if (NS_FAILED(rv)) {
+  Maybe<const char*> appDirArg = geckoargs::sAppDir.Get(aArgc, aArgv);
+  if (appDirArg.isSome()) {
+    bool exists;
+    nsresult rv = XRE_GetFileFromPath(*appDirArg, getter_AddRefs(appDir));
+    if (NS_FAILED(rv) || NS_FAILED(appDir->Exists(&exists)) || !exists) {
       return false;
     }
   }
 
-  nsresult rv = NS_InitXPCOM(nullptr, appDir, nullptr);
+  if (!ProcessChild::InitPrefs(aArgc, aArgv)) {
+    return false;
+  }
+
+  if (jsInitHandle &&
+      !mozilla::ipc::ImportSharedJSInit(jsInitHandle.extract())) {
+    return false;
+  }
+
+  if (!mContent->Init(ParentPid(), TakeInitialEndpoint(), *parentBuildID)) {
+    return false;
+  }
+
+  nsCOMPtr<nsIFile> greDir;
+  nsresult rv = GetGREDir(getter_AddRefs(greDir));
   if (NS_FAILED(rv)) {
     return false;
   }
+
+  nsCOMPtr<nsIFile> xpcomAppDir = appDir ? appDir : greDir;
+
+  rv = mDirProvider.Initialize(xpcomAppDir, greDir);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  if (!Omnijar::IsInitialized()) {
+    Omnijar::ChildProcessInit(aArgc, aArgv);
+  }
+
+  rv = NS_InitXPCOM(nullptr, xpcomAppDir, &mDirProvider);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  NS_CreateServicesFromCategory("app-startup", nullptr, "app-startup",
+                                nullptr);
 
   mContent->InitXPCOM();
 
@@ -63,6 +120,7 @@ void
 EmbedLiteContentProcess::CleanUp()
 {
   LOGT();
+  mDirProvider.DoShutdown();
   NS_ShutdownXPCOM(nullptr);
 }
 

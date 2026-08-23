@@ -14,10 +14,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 2 insertions(+), 22 deletions(-)
 
 diff --git a/toolkit/profile/nsProfileLock.cpp b/toolkit/profile/nsProfileLock.cpp
-index 0a809642aa62..8ea27e28450b 100644
+index 3d17171117c8..f2c006d38e30 100644
 --- a/toolkit/profile/nsProfileLock.cpp
 +++ b/toolkit/profile/nsProfileLock.cpp
-@@ -307,29 +307,9 @@ nsresult nsProfileLock::LockWithSymlink(nsIFile* aLockFile,
+@@ -309,29 +309,9 @@ nsresult nsProfileLock::LockWithSymlink(nsIFile* aLockFile,
    struct in_addr inaddr;
    inaddr.s_addr = htonl(INADDR_LOOPBACK);
  

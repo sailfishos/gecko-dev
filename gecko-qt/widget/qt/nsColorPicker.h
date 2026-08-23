@@ -6,32 +6,32 @@
 #ifndef nsColorPicker_h__
 #define nsColorPicker_h__
 
+#include "nsBaseColorPicker.h"
 #include "nsCOMPtr.h"
-#include "nsIColorPicker.h"
 #include "nsIEmbedAppService.h"
 #include "nsString.h"
 #include "nsTArray.h"
 
-class nsColorPicker final : public nsIColorPicker,
+class nsColorPicker final : public nsBaseColorPicker,
                             public nsIEmbedMessageListener {
  public:
   nsColorPicker();
 
   NS_DECL_ISUPPORTS
-  NS_DECL_NSICOLORPICKER
   NS_DECL_NSIEMBEDMESSAGELISTENER
 
  private:
   ~nsColorPicker();
+
+  // nsBaseColorPicker
+  nsresult InitNative(const nsTArray<nsString>& aDefaultColors) override;
+  nsresult OpenNative() override;
 
   nsresult EnsureWindowId(mozIDOMWindowProxy* aWindow);
   nsresult SendOpenMessage();
   void Finish(const nsAString& aColor);
 
   nsCOMPtr<nsIEmbedAppService> mEmbedAppService;
-  nsCOMPtr<nsIColorPickerShownCallback> mCallback;
-  nsString mTitle;
-  nsString mInitialColor;
   nsTArray<nsString> mDefaultColors;
   uint32_t mWinId;
   bool mListening;

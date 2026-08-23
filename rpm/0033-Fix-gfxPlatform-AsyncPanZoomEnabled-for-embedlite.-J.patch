@@ -13,10 +13,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 34e2d046545b..a7a63d728ace 100644
+index 84ff3b3ce0b4..52be69363950 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -3622,7 +3622,7 @@ bool gfxPlatform::UseDesktopZoomingScrollbars() {
+@@ -3992,7 +3992,7 @@ bool gfxPlatform::UseDesktopZoomingScrollbars() {
  
  /*static*/
  bool gfxPlatform::AsyncPanZoomEnabled() {

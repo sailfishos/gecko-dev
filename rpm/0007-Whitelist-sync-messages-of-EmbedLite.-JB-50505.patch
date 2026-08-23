@@ -10,7 +10,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 10 insertions(+)
 
 diff --git a/ipc/ipdl/sync-messages.ini b/ipc/ipdl/sync-messages.ini
-index 075c0557b981..cfa185edb047 100644
+index d56225567094..af023ba83057 100644
 --- a/ipc/ipdl/sync-messages.ini
 +++ b/ipc/ipdl/sync-messages.ini
 @@ -9,6 +9,16 @@

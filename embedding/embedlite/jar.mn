@@ -1,0 +1,11 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+embedlitechrome.jar:
+% content embedlitechrome %content/
+  content/browser.xhtml (content/browser.xhtml)
+  content/browser.js (content/browser.js)
+  content/contentbridge-child.js (content/contentbridge-child.js)
+  content/domfullscreen-child.sys.mjs (content/domfullscreen-child.sys.mjs)
+  content/domfullscreen-parent.sys.mjs (content/domfullscreen-parent.sys.mjs)

@@ -8,60 +8,24 @@ This reverts commit ca77995f5d2a21fba8191989b3ebfb913abc3eab.
 
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
- build/docs/defining-binaries.rst              |  3 +++
- config/rules.mk                               | 14 ++++++++++
+ config/rules.mk                               | 14 ++++++++
  intl/unicharutil/util/moz.build               |  1 +
- js/xpconnect/shell/moz.build                  |  5 ++++
  mozglue/build/moz.build                       |  2 ++
- .../mozbuild/backend/recursivemake.py         | 14 +++++++++-
- python/mozbuild/mozbuild/frontend/context.py  | 27 +++++++++++++++++++
- python/mozbuild/mozbuild/frontend/data.py     | 27 +++++++++++++++----
- python/mozbuild/mozbuild/frontend/emitter.py  | 10 +++++++
- .../test/backend/data/sdk-files/bar.ico       |  0
- .../test/backend/data/sdk-files/foo.ico       |  0
- .../test/backend/data/sdk-files/moz.build     | 11 ++++++++
- .../test/backend/data/sdk-files/sub/quux.png  |  0
- .../test/backend/test_recursivemake.py        | 12 +++++++++
- .../test/frontend/data/sdk-files/bar.ico      |  0
- .../test/frontend/data/sdk-files/baz.png      |  0
- .../test/frontend/data/sdk-files/foo.xpm      |  0
- .../test/frontend/data/sdk-files/moz.build    | 12 +++++++++
- .../test/frontend/data/sdk-files/quux.icns    |  0
- .../mozbuild/test/frontend/test_emitter.py    | 17 ++++++++++++
+ .../mozbuild/backend/recursivemake.py         | 14 +++++++-
+ python/mozbuild/mozbuild/frontend/context.py  | 27 +++++++++++++++
+ python/mozbuild/mozbuild/frontend/data.py     | 34 ++++++++++++++++---
+ python/mozbuild/mozbuild/frontend/emitter.py  | 10 ++++++
  security/moz.build                            |  2 ++
  toolkit/library/moz.build                     |  2 ++
  xpcom/glue/standalone/moz.build               |  1 +
- xpcom/idl-parser/xpidl/moz.build              | 14 ++++++++++
- 24 files changed, 168 insertions(+), 6 deletions(-)
- create mode 100644 python/mozbuild/mozbuild/test/backend/data/sdk-files/bar.ico
- create mode 100644 python/mozbuild/mozbuild/test/backend/data/sdk-files/foo.ico
- create mode 100644 python/mozbuild/mozbuild/test/backend/data/sdk-files/moz.build
- create mode 100644 python/mozbuild/mozbuild/test/backend/data/sdk-files/sub/quux.png
- create mode 100644 python/mozbuild/mozbuild/test/frontend/data/sdk-files/bar.ico
- create mode 100644 python/mozbuild/mozbuild/test/frontend/data/sdk-files/baz.png
- create mode 100644 python/mozbuild/mozbuild/test/frontend/data/sdk-files/foo.xpm
- create mode 100644 python/mozbuild/mozbuild/test/frontend/data/sdk-files/moz.build
- create mode 100644 python/mozbuild/mozbuild/test/frontend/data/sdk-files/quux.icns
+ xpcom/idl-parser/xpidl/moz.build              |  6 ++++
+ 11 files changed, 107 insertions(+), 6 deletions(-)
 
-diff --git a/build/docs/defining-binaries.rst b/build/docs/defining-binaries.rst
-index fdac27e26a80..3d1172b5807e 100644
---- a/build/docs/defining-binaries.rst
-+++ b/build/docs/defining-binaries.rst
-@@ -297,6 +297,9 @@ needs to be prefixed with ``static:`` in ``USE_LIBS``
- Miscellaneous
- =============
- 
-+The ``SDK_LIBRARY`` boolean variable defines whether the library in the current
-+directory is going to be installed in the SDK.
-+
- The ``SONAME`` variable declares a "shared object name" for the library. It
- defaults to the ``Library`` name or the ``SHARED_LIBRARY_NAME`` if set. When
- linking to a library with a ``SONAME``, the resulting library or program will
 diff --git a/config/rules.mk b/config/rules.mk
-index 0e744d69864d..f747090da692 100644
+index d03f5e7dbc5e..980ffae7b832 100644
 --- a/config/rules.mk
 +++ b/config/rules.mk
-@@ -221,6 +221,8 @@ SIMPLE_PROGRAMS :=
+@@ -215,6 +215,8 @@ SIMPLE_PROGRAMS :=
  HOST_SHARED_LIBRARY :=
  HOST_PROGRAM :=
  HOST_SIMPLE_PROGRAMS :=
@@ -70,7 +34,7 @@ index 0e744d69864d..f747090da692 100644
  endif
  
  ifdef MACH
-@@ -842,6 +844,18 @@ ifneq (,$(DIST_SUBDIR)$(XPI_NAME))
+@@ -836,6 +838,18 @@ ifneq (,$(DIST_SUBDIR)$(XPI_NAME))
  PREF_DIR = defaults/preferences
  endif
  
@@ -90,57 +54,41 @@ index 0e744d69864d..f747090da692 100644
  # CHROME PACKAGING
  
 diff --git a/intl/unicharutil/util/moz.build b/intl/unicharutil/util/moz.build
-index 2bbd00415cae..f260132be938 100644
+index c93613429c91..5fc67b31f187 100644
 --- a/intl/unicharutil/util/moz.build
 +++ b/intl/unicharutil/util/moz.build
-@@ -35,3 +35,4 @@ GeneratedFile(
- GeneratedFile("IsCombiningDiacritic.h", script="is_combining_diacritic.py", force=True)
+@@ -33,3 +33,4 @@ GeneratedFile(
+ GeneratedFile("IsCombiningDiacritic.h", script="is_combining_diacritic.py")
  
  FINAL_LIBRARY = "xul"
 +SDK_LIBRARY = True
-diff --git a/js/xpconnect/shell/moz.build b/js/xpconnect/shell/moz.build
-index de3b050b7972..6eafee6cf213 100644
---- a/js/xpconnect/shell/moz.build
-+++ b/js/xpconnect/shell/moz.build
-@@ -6,6 +6,11 @@
- 
- GeckoProgram("xpcshell", linkage="dependent")
- 
-+#if CONFIG['COMPILE_ENVIRONMENT']:
-+#    SDK_FILES.bin += [
-+#        '!xpcshell%s' % CONFIG['BIN_SUFFIX'],
-+#    ]
-+
- SOURCES += [
-     "xpcshell.cpp",
- ]
 diff --git a/mozglue/build/moz.build b/mozglue/build/moz.build
-index 100ce397d4ee..7750146ea828 100644
+index 1fa4f8cba517..03b9e74e43c9 100644
 --- a/mozglue/build/moz.build
 +++ b/mozglue/build/moz.build
-@@ -14,6 +14,8 @@ elif CONFIG["OS_TARGET"] in ("WINNT", "Darwin", "Android"):
+@@ -12,6 +12,8 @@ elif CONFIG["OS_TARGET"] in ("WINNT", "Darwin", "Android"):
  else:
      Library("mozglue")
  
 +SDK_LIBRARY = True
 +
  FORCE_STATIC_LIB = True
- STATIC_LIBRARY_NAME = 'mozglue'
+ STATIC_LIBRARY_NAME = "mozglue"
  
 diff --git a/python/mozbuild/mozbuild/backend/recursivemake.py b/python/mozbuild/mozbuild/backend/recursivemake.py
-index d92864d081dc..80ba551365b6 100644
+index fa4d2b57b1cb..2e85660c441d 100644
 --- a/python/mozbuild/mozbuild/backend/recursivemake.py
 +++ b/python/mozbuild/mozbuild/backend/recursivemake.py
-@@ -362,6 +362,7 @@ class RecursiveMakeBackend(MakeBackend):
+@@ -358,6 +358,7 @@ class RecursiveMakeBackend(MakeBackend):
          # used for a "magic" rm -rf.
          self._install_manifests["dist_public"]
          self._install_manifests["dist_private"]
 +        self._install_manifests["dist_sdk"]
  
          self._traversal = RecursiveMakeTraversal()
-         self._compile_graph = OrderedDefaultDict(set)
-@@ -1338,6 +1339,8 @@ class RecursiveMakeBackend(MakeBackend):
-         backend_file.write("SHARED_LIBRARY := %s\n" % libdef.lib_name)
+         self._compile_graph = defaultdict(set)
+@@ -1507,6 +1508,8 @@ class RecursiveMakeBackend(MakeBackend):
+         backend_file.write("SHARED_LIBRARY := %s\n" % shared_lib)
          if libdef.soname:
              backend_file.write("DSO_SONAME := %s\n" % libdef.soname)
 +        if libdef.is_sdk:
@@ -148,7 +96,7 @@ index d92864d081dc..80ba551365b6 100644
          if libdef.symbols_file:
              if libdef.symbols_link_arg:
                  backend_file.write("EXTRA_DSO_LDOPTS += %s\n" % libdef.symbols_link_arg)
-@@ -1354,6 +1357,8 @@ class RecursiveMakeBackend(MakeBackend):
+@@ -1519,6 +1522,8 @@ class RecursiveMakeBackend(MakeBackend):
          backend_file.write_once("LIBRARY_NAME := %s\n" % libdef.basename)
          backend_file.write("FORCE_STATIC_LIB := 1\n")
          backend_file.write("REAL_LIBRARY := %s\n" % libdef.lib_name)
@@ -157,7 +105,7 @@ index d92864d081dc..80ba551365b6 100644
          if libdef.no_expand_lib:
              backend_file.write("NO_EXPAND_LIBS := 1\n")
  
-@@ -1494,7 +1499,14 @@ class RecursiveMakeBackend(MakeBackend):
+@@ -1674,7 +1679,14 @@ class RecursiveMakeBackend(MakeBackend):
      def _process_final_target_files(self, obj, files, backend_file):
          target = obj.install_target
          path = mozpath.basedir(
@@ -174,10 +122,10 @@ index d92864d081dc..80ba551365b6 100644
          if not path:
              raise Exception("Cannot install to " + target)
 diff --git a/python/mozbuild/mozbuild/frontend/context.py b/python/mozbuild/mozbuild/frontend/context.py
-index 1e241c56564c..087f92de965e 100644
+index c7ca0e4e7bfe..261bf910acb2 100644
 --- a/python/mozbuild/mozbuild/frontend/context.py
 +++ b/python/mozbuild/mozbuild/frontend/context.py
-@@ -1936,6 +1936,33 @@ VARIABLES = {
+@@ -2027,6 +2027,33 @@ VARIABLES = {
          them correctly.
          """,
      ),
@@ -212,10 +160,10 @@ index 1e241c56564c..087f92de965e 100644
          StrictOrderingOnAppendList,
          list,
 diff --git a/python/mozbuild/mozbuild/frontend/data.py b/python/mozbuild/mozbuild/frontend/data.py
-index 84a47f90cf7f..4818472bb7d8 100644
+index cb0492f67c97..3e780a60fa21 100644
 --- a/python/mozbuild/mozbuild/frontend/data.py
 +++ b/python/mozbuild/mozbuild/frontend/data.py
-@@ -642,11 +642,14 @@ class Library(BaseLibrary):
+@@ -668,11 +668,14 @@ class Library(BaseLibrary):
      """Context derived container object for a library"""
  
      KIND = "target"
@@ -232,19 +180,25 @@ index 84a47f90cf7f..4818472bb7d8 100644
  
  
  class StaticLibrary(Library):
-@@ -655,9 +658,9 @@ class StaticLibrary(Library):
+@@ -681,9 +684,15 @@ class StaticLibrary(Library):
      __slots__ = ("link_into", "no_expand_lib")
  
      def __init__(
 -        self, context, basename, real_name=None, link_into=None, no_expand_lib=False
-+        self, context, basename, real_name=None, is_sdk=False, link_into=None, no_expand_lib=False
++        self,
++        context,
++        basename,
++        real_name=None,
++        is_sdk=False,
++        link_into=None,
++        no_expand_lib=False,
      ):
 -        Library.__init__(self, context, basename, real_name)
 +        Library.__init__(self, context, basename, real_name, is_sdk)
          self.link_into = link_into
          self.no_expand_lib = no_expand_lib
  
-@@ -808,12 +811,13 @@ class SharedLibrary(Library):
+@@ -841,12 +850,13 @@ class SharedLibrary(Library):
          context,
          basename,
          real_name=None,
@@ -259,7 +213,7 @@ index 84a47f90cf7f..4818472bb7d8 100644
          self.variant = variant
          self.lib_name = real_name or basename
          self.output_category = context.get("SHARED_LIBRARY_OUTPUT_CATEGORY")
-@@ -1267,6 +1271,19 @@ class Exports(FinalTargetFiles):
+@@ -1354,6 +1364,20 @@ class Exports(FinalTargetFiles):
          return "dist/include"
  
  
@@ -271,19 +225,20 @@ index 84a47f90cf7f..4818472bb7d8 100644
 +    this object fills that role. It just has a reference to the underlying
 +    HierarchicalStringList, which is created when parsing SDK_FILES.
 +    """
++
 +    @property
 +    def install_target(self):
-+        return 'dist/sdk'
++        return "dist/sdk"
 +
 +
  class GeneratedFile(ContextDerived):
      """Represents a generated file."""
  
 diff --git a/python/mozbuild/mozbuild/frontend/emitter.py b/python/mozbuild/mozbuild/frontend/emitter.py
-index 8d6207242183..12e33aa0e83d 100644
+index 0e763ea1d6f0..a3bcd9528e04 100644
 --- a/python/mozbuild/mozbuild/frontend/emitter.py
 +++ b/python/mozbuild/mozbuild/frontend/emitter.py
-@@ -58,6 +58,7 @@ from .data import (
+@@ -61,6 +61,7 @@ from .data import (
      RustProgram,
      RustTests,
      SandboxedWasmLibrary,
@@ -291,148 +246,34 @@ index 8d6207242183..12e33aa0e83d 100644
      SharedLibrary,
      SimpleProgram,
      Sources,
-@@ -806,6 +807,14 @@ class TreeMetadataEmitter(LoggingMixin):
+@@ -846,6 +847,14 @@ class TreeMetadataEmitter(LoggingMixin):
                      )
                  shared_args["soname"] = soname
  
 +            # If both a shared and a static library are created, only the
 +            # shared library is meant to be a SDK library.
-+            if context.get('SDK_LIBRARY'):
++            if context.get("SDK_LIBRARY"):
 +                if shared_lib:
-+                    shared_args['is_sdk'] = True
++                    shared_args["is_sdk"] = True
 +                elif static_lib:
-+                    static_args['is_sdk'] = True
++                    static_args["is_sdk"] = True
 +
              if context.get("NO_EXPAND_LIBS"):
                  if not static_lib:
                      raise SandboxValidationError(
-@@ -1404,6 +1413,7 @@ class TreeMetadataEmitter(LoggingMixin):
-             ("LOCALIZED_PP_FILES", LocalizedPreprocessedFiles),
+@@ -1509,6 +1518,7 @@ class TreeMetadataEmitter(LoggingMixin):
+             ("MOZ_SRC_FILES", MozSrcFiles),
              ("OBJDIR_FILES", ObjdirFiles),
              ("OBJDIR_PP_FILES", ObjdirPreprocessedFiles),
 +            ("SDK_FILES", SdkFiles),
              ("TEST_HARNESS_FILES", TestHarnessFiles),
          ):
-             all_files = context.get(var)
-diff --git a/python/mozbuild/mozbuild/test/backend/data/sdk-files/bar.ico b/python/mozbuild/mozbuild/test/backend/data/sdk-files/bar.ico
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/backend/data/sdk-files/foo.ico b/python/mozbuild/mozbuild/test/backend/data/sdk-files/foo.ico
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/backend/data/sdk-files/moz.build b/python/mozbuild/mozbuild/test/backend/data/sdk-files/moz.build
-new file mode 100644
-index 000000000000..3429877410b1
---- /dev/null
-+++ b/python/mozbuild/mozbuild/test/backend/data/sdk-files/moz.build
-@@ -0,0 +1,11 @@
-+# Any copyright is dedicated to the Public Domain.
-+# http://creativecommons.org/publicdomain/zero/1.0/
-+
-+SDK_FILES += [
-+    'bar.ico',
-+    'sub/quux.png',
-+]
-+
-+SDK_FILES.icons += [
-+    'foo.ico',
-+]
-diff --git a/python/mozbuild/mozbuild/test/backend/data/sdk-files/sub/quux.png b/python/mozbuild/mozbuild/test/backend/data/sdk-files/sub/quux.png
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/backend/test_recursivemake.py b/python/mozbuild/mozbuild/test/backend/test_recursivemake.py
-index acbada060b1a..f696e5f89885 100644
---- a/python/mozbuild/mozbuild/test/backend/test_recursivemake.py
-+++ b/python/mozbuild/mozbuild/test/backend/test_recursivemake.py
-@@ -637,6 +637,18 @@ class TestRecursiveMakeBackend(BackendTester):
-         self.assertIn("res/tests/test.manifest", m)
-         self.assertIn("res/tests/extra.manifest", m)
- 
-+    def test_sdk_files(self):
-+        """Ensure SDK_FILES is handled properly."""
-+        env = self._consume('sdk-files', RecursiveMakeBackend)
-+
-+        #SDK_FILES should appear in the dist_sdk install manifest.
-+        m = InstallManifest(path=os.path.join(env.topobjdir,
-+            '_build_manifests', 'install', 'dist_sdk'))
-+        self.assertEqual(len(m), 3)
-+        self.assertIn('bar.ico', m)
-+        self.assertIn('quux.png', m)
-+        self.assertIn('icons/foo.ico', m)
-+
-     def test_test_manifests_files_written(self):
-         """Ensure test manifests get turned into files."""
-         env = self._consume("test-manifests-written", RecursiveMakeBackend)
-diff --git a/python/mozbuild/mozbuild/test/frontend/data/sdk-files/bar.ico b/python/mozbuild/mozbuild/test/frontend/data/sdk-files/bar.ico
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/frontend/data/sdk-files/baz.png b/python/mozbuild/mozbuild/test/frontend/data/sdk-files/baz.png
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/frontend/data/sdk-files/foo.xpm b/python/mozbuild/mozbuild/test/frontend/data/sdk-files/foo.xpm
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/frontend/data/sdk-files/moz.build b/python/mozbuild/mozbuild/test/frontend/data/sdk-files/moz.build
-new file mode 100644
-index 000000000000..a2f8ddf9b975
---- /dev/null
-+++ b/python/mozbuild/mozbuild/test/frontend/data/sdk-files/moz.build
-@@ -0,0 +1,12 @@
-+# Any copyright is dedicated to the Public Domain.
-+# http://creativecommons.org/publicdomain/zero/1.0/
-+
-+SDK_FILES += [
-+    'bar.ico',
-+    'baz.png',
-+    'foo.xpm',
-+]
-+
-+SDK_FILES.icons += [
-+    'quux.icns',
-+]
-diff --git a/python/mozbuild/mozbuild/test/frontend/data/sdk-files/quux.icns b/python/mozbuild/mozbuild/test/frontend/data/sdk-files/quux.icns
-new file mode 100644
-index 000000000000..e69de29bb2d1
-diff --git a/python/mozbuild/mozbuild/test/frontend/test_emitter.py b/python/mozbuild/mozbuild/test/frontend/test_emitter.py
-index 4bbab3942a6a..4a053fd69706 100644
---- a/python/mozbuild/mozbuild/test/frontend/test_emitter.py
-+++ b/python/mozbuild/mozbuild/test/frontend/test_emitter.py
-@@ -30,6 +30,7 @@ from mozbuild.frontend.data import (
-     Program,
-     RustLibrary,
-     RustProgram,
-+    SdkFiles,
-     SharedLibrary,
-     SimpleProgram,
-     Sources,
-@@ -727,6 +728,22 @@ class TestEmitterBasic(unittest.TestCase):
-         ):
-             self.read_topsrcdir(reader)
- 
-+    def test_sdk_files(self):
-+        reader = self.reader('sdk-files')
-+        objs = self.read_topsrcdir(reader)
-+
-+        self.assertEqual(len(objs), 1)
-+        self.assertIsInstance(objs[0], SdkFiles)
-+
-+        files = objs[0].files
-+
-+        self.assertEqual(files._strings, ['bar.ico', 'baz.png', 'foo.xpm'])
-+
-+        self.assertIn('icons', files._children)
-+        icons = files._children['icons']
-+
-+        self.assertEqual(icons._strings, ['quux.icns'])
-+
-     def test_program(self):
-         reader = self.reader("program")
-         objs = self.read_topsrcdir(reader)
+             if var == "MOZ_SRC_FILES":
 diff --git a/security/moz.build b/security/moz.build
-index a527fbcae8db..a146a3b0afcd 100644
+index 90bae217e5c8..c4a03e14cfed 100644
 --- a/security/moz.build
 +++ b/security/moz.build
-@@ -26,6 +26,8 @@ if CONFIG["MOZ_FOLD_LIBS"]:
+@@ -33,6 +33,8 @@ if CONFIG["MOZ_FOLD_LIBS"]:
      # TODO: The library name can be changed when bug 845217 is fixed.
      SHARED_LIBRARY_NAME = "nss3"
  
@@ -442,10 +283,10 @@ index a527fbcae8db..a146a3b0afcd 100644
          "nspr4",
          "nss3_static",
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
-index 5284ff39f172..9c6e5ca33898 100644
+index 2e194a1abaf7..936b5416f31a 100644
 --- a/toolkit/library/moz.build
 +++ b/toolkit/library/moz.build
-@@ -121,6 +121,8 @@ def Libxul(name, output_category=None):
+@@ -113,6 +113,8 @@ def Libxul(name, output_category=None):
  # is then linked to both build/libxul and gtest/libxul.
  Library("xul")
  
@@ -455,36 +296,28 @@ index 5284ff39f172..9c6e5ca33898 100644
  
  # Use a FINAL_LIBRARY for Libxul_defines to propagate from there. They wouldn't
 diff --git a/xpcom/glue/standalone/moz.build b/xpcom/glue/standalone/moz.build
-index 310855a26d4b..aeea0412ba32 100644
+index b933b8daa0b7..91495db6135e 100644
 --- a/xpcom/glue/standalone/moz.build
 +++ b/xpcom/glue/standalone/moz.build
-@@ -12,6 +12,7 @@ SOURCES += [
+@@ -10,6 +10,7 @@ SOURCES += [
  
  Library("xpcomglue")
  
 +SDK_LIBRARY = True
  FORCE_STATIC_LIB = True
- STATIC_LIBRARY_NAME = 'xpcomglue'
+ STATIC_LIBRARY_NAME = "xpcomglue"
  
 diff --git a/xpcom/idl-parser/xpidl/moz.build b/xpcom/idl-parser/xpidl/moz.build
-index e0b2446e9e1d..e62472952249 100644
+index 06cdd3330718..d3c3e6eb3f51 100644
 --- a/xpcom/idl-parser/xpidl/moz.build
 +++ b/xpcom/idl-parser/xpidl/moz.build
-@@ -9,3 +9,17 @@ PYTHON_UNITTEST_MANIFESTS += [
+@@ -7,3 +7,9 @@ PYTHON_UNITTEST_MANIFESTS += [
  ]
  
  GeneratedFile("xpidl.stub", script="header.py", entry_point="main")
 +
 +SDK_FILES.bin += [
-+#    "!xpidllex.py",
-+#    "!xpidlyacc.py",
 +    "header.py",
 +    "jsonxpt.py",
 +    "xpidl.py",
 +]
-+
-+# SDK_FILES.bin.ply += [
-+#     "/other-licenses/ply/ply/__init__.py",
-+#     "/other-licenses/ply/ply/lex.py",
-+#     "/other-licenses/ply/ply/yacc.py",
-+# ]

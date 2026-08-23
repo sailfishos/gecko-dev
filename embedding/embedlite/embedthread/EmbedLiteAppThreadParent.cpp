@@ -13,7 +13,6 @@
 
 #include "mozilla/Unused.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
@@ -106,11 +105,18 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* acto
 }
 
 PEmbedLiteWindowParent*
-EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
+EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    const uintptr_t &aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
 {
+  Unused << initialContentURI;
   LOGT("id:%u", id);
-  EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener));
+  EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(
+    width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener),
+    chromeHosted);
   p->AddRef();
+  EmbedLiteWindowParent::Register(p);
   return p;
 }
 
@@ -119,6 +125,7 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* 
 {
   LOGT();
   EmbedLiteWindowThreadParent* p = static_cast<EmbedLiteWindowThreadParent *>(aActor);
+  EmbedLiteWindowParent::Unregister(p);
   p->Release();
   return true;
 }
@@ -140,4 +147,3 @@ mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(
 
 } // namespace embedlite
 } // namespace mozilla
-

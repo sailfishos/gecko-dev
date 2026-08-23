@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EmbedLog.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/Logging.h"
 
 #include "EmbedLiteApp.h"
@@ -17,6 +18,7 @@
 #include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
 #include "mozilla/dom/MessageChannel.h"       // for MessageChannel
 #include "mozilla/Hal.h"
+#include "GLContextProvider.h"
 
 #include "EmbedLiteUILoop.h"
 #include "EmbedLiteSubThread.h"
@@ -37,10 +39,6 @@
 #include "EmbedLiteAppProcessParent.h"
 
 namespace mozilla {
-namespace startup {
-extern bool sIsEmbedlite;
-extern GeckoProcessType sChildProcessType;
-}
 namespace embedlite {
 
 namespace {
@@ -184,6 +182,7 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
       aApp->mSubThread = new EmbedLiteSubThread(aApp);
       if (!aApp->mSubThread->StartEmbedThread()) {
         LOGE("Failed to start child thread");
+        MOZ_CRASH("Failed to initialize the EmbedLite child thread");
       }
     }
   } else if (aApp->mEmbedType == EMBED_PROCESS) {
@@ -211,7 +210,6 @@ bool
 EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aEventLoop)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
-  mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
   mPreDestroySent = false;
@@ -229,7 +227,6 @@ bool
 EmbedLiteApp::Start(EmbedType aEmbedType)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
-  mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
   mPreDestroySent = false;
@@ -270,7 +267,7 @@ EmbedLiteApp::AddManifestLocation(const char* manifest)
 }
 
 bool
-EmbedLiteApp::StartChildThread()
+EmbedLiteApp::InitializeChildThread()
 {
   NS_ENSURE_TRUE(mEmbedType == EMBED_THREAD, false);
   LOGT("mUILoop:%p, current:%p", mUILoop, MessageLoop::current());
@@ -279,8 +276,7 @@ EmbedLiteApp::StartChildThread()
 
   for (unsigned int i = 0; i < sComponentDirs.Length(); i++) {
     nsCOMPtr<nsIFile> f;
-    NS_NewNativeLocalFile(sComponentDirs[i], true,
-                          getter_AddRefs(f));
+    NS_NewNativeLocalFile(sComponentDirs[i], getter_AddRefs(f));
     if (f) {
       LOGT("Loading manifest: %s", sComponentDirs[i].get());
       XRE_AddManifestLocation(NS_APP_LOCATION, f);
@@ -289,12 +285,25 @@ EmbedLiteApp::StartChildThread()
     }
   }
 
-  GeckoLoader::InitEmbedding(mProfilePath);
+  return GeckoLoader::InitEmbedding(mProfilePath);
+}
 
+void
+EmbedLiteApp::ConnectChildThread()
+{
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
   mAppChild->Init(mAppParent);
+}
 
+bool
+EmbedLiteApp::StartChildThread()
+{
+  if (!InitializeChildThread()) {
+    return false;
+  }
+
+  ConnectChildThread();
   return true;
 }
 
@@ -500,6 +509,11 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t a
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
+  if (!aWindow || aWindow->IsChromeHosted()) {
+    NS_WARNING(
+      "Legacy EmbedLite views cannot be added to a chrome-hosted window");
+    return nullptr;
+  }
   static uint32_t sViewCreateID = 0;
   sViewCreateID++;
 
@@ -520,6 +534,45 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t a
 EmbedLiteWindow*
 EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aListener)
 {
+  return CreateWindowInternal(width, height, nullptr, false, aListener);
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateChromeWindow(int width, int height,
+                                 const char* initialContentURI,
+                                 EmbedLiteWindowListener* aListener)
+{
+  if (mEmbedType != EMBED_THREAD || width <= 0 || height <= 0 ||
+      width > UINT16_MAX || height > UINT16_MAX) {
+    NS_WARNING(
+      "Chrome-hosted windows require thread embedding and valid dimensions");
+    return nullptr;
+  }
+  const char* contentURI = initialContentURI && *initialContentURI
+                             ? initialContentURI
+                             : "about:blank";
+  return CreateWindowInternal(width, height, contentURI, true, aListener);
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateChromeTabWindow(int width, int height,
+                                    EmbedLiteWindowListener* aListener)
+{
+  if (mEmbedType != EMBED_THREAD || width <= 0 || height <= 0 ||
+      width > UINT16_MAX || height > UINT16_MAX) {
+    NS_WARNING(
+      "Chrome-hosted windows require thread embedding and valid dimensions");
+    return nullptr;
+  }
+  return CreateWindowInternal(width, height, "", true, aListener);
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateWindowInternal(int width, int height,
+                                   const char* initialContentURI,
+                                   bool chromeHosted,
+                                   EmbedLiteWindowListener* aListener)
+{
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
   static uint32_t sWindowCreateID = 0;
@@ -529,14 +582,29 @@ EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aList
       aListener = &sFakeWindowListener;
   }
 
+  nsAutoCString chromeInitialURI;
+  if (chromeHosted && initialContentURI) {
+    chromeInitialURI.Assign(initialContentURI);
+  }
+
   EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
   PEmbedLiteWindowParent* windowParent =
-      appParent->AllocPEmbedLiteWindowParent(width, height, sWindowCreateID,
-                                             reinterpret_cast<uintptr_t>(aListener));
-  windowParent = appParent->SendPEmbedLiteWindowConstructor(windowParent,
-                                                           width, height, sWindowCreateID,
-                                                           reinterpret_cast<uintptr_t>(aListener));
-  EmbedLiteWindow* window = new EmbedLiteWindow(this, windowParent, sWindowCreateID);
+    appParent->AllocPEmbedLiteWindowParent(
+      width, height, sWindowCreateID,
+      reinterpret_cast<uintptr_t>(aListener), chromeHosted,
+      chromeInitialURI);
+  if (!windowParent) {
+    return nullptr;
+  }
+  windowParent = appParent->SendPEmbedLiteWindowConstructor(
+    windowParent, width, height, sWindowCreateID,
+    reinterpret_cast<uintptr_t>(aListener), chromeHosted,
+    chromeInitialURI);
+  if (!windowParent) {
+    return nullptr;
+  }
+  EmbedLiteWindow* window =
+    new EmbedLiteWindow(this, windowParent, sWindowCreateID, chromeHosted);
   mWindows[sWindowCreateID] = window;
   return window;
 }
@@ -673,6 +741,21 @@ EmbedLiteApp::SetIsAccelerated(bool aIsAccelerated)
   {
     mRenderType = RENDER_SW;
   }
+}
+
+void
+EmbedLiteApp::SetEGLDisplay(void* aDisplay)
+{
+  NS_ASSERTION(mState == STOPPED,
+               "SetEGLDisplay must be called before starting Gecko");
+  if (mState != STOPPED) {
+    return;
+  }
+#ifdef MOZ_WIDGET_QT
+  gl::SetQtEGLDisplay(aDisplay);
+#else
+  MOZ_ASSERT(!aDisplay);
+#endif
 }
 
 void

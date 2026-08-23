@@ -10,15 +10,46 @@
 
 #include "PuppetWidgetBase.h"
 
+#include "mozilla/Attributes.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"           // for InputContext
+#include "nsStringFwd.h"
 #include <list>
 
 namespace mozilla {
+
+namespace widget {
+class TextEventDispatcher;
+}
 
 namespace embedlite {
 
 class EmbedLiteWindowChild;
 class EmbedContentController;
+class EmbedLitePuppetWidget;
+class EmbedLiteChromeInputTransactionListener;
+class nsWindow;
+
+class MOZ_RAII AutoEmbedLiteChromeWindowHost final
+{
+public:
+  explicit AutoEmbedLiteChromeWindowHost(nsWindow* aHost);
+  ~AutoEmbedLiteChromeWindowHost();
+
+  bool IsValid() const;
+  bool WasConsumed() const { return mConsumed; }
+
+private:
+  static already_AddRefed<nsIWidget> ConsumePending();
+  already_AddRefed<nsIWidget> Consume();
+
+  static AutoEmbedLiteChromeWindowHost* sPendingHost;
+
+  RefPtr<nsWindow> mHost;
+  bool mConsumed;
+
+  friend already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow();
+};
 
 class nsWindow : public PuppetWidgetBase
 {
@@ -30,7 +61,6 @@ public:
 
   using PuppetWidgetBase::Create; // for Create signature not overridden here
   [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
-                                        nsNativeWidget    aNativeParent,
                                         const LayoutDeviceIntRect& aRect,
                                         widget::InitData* aInitData = nullptr) override;
 
@@ -58,6 +88,7 @@ public:
   virtual void* GetNativeData(uint32_t aDataType) override;
 
   virtual WindowRenderer* GetWindowRenderer() override;
+  void ScheduleWebRenderComposite();
 
   virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;
@@ -71,6 +102,23 @@ public:
   void Activate(EmbedContentController* aController);
   void Deactivate(EmbedContentController* aController);
   RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
+  void AttachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
+  void DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
+  void InitializeChromeInput();
+  bool DispatchChromeInputEvent(WidgetInputEvent* aEvent);
+  bool SetChromeMargins(const LayoutDeviceIntMargin& aMargins);
+  bool SetChromeSafeAreaInsets(const LayoutDeviceIntMargin& aInsets);
+  bool DispatchChromeTextEvent(const nsAString& aCommit,
+                               const nsAString& aPreEdit,
+                               int32_t aReplacementStart,
+                               int32_t aReplacementLength);
+  bool DispatchChromeKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
+                              int32_t aCharCode);
+  bool DispatchChromeKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,
+                                int32_t aCharCode);
+  bool SetChromeFocused(bool aFocused);
+  void SetChromeInputContext(const InputContext& aContext,
+                             const InputContextAction& aAction);
   void SetFirstViewCreated() { mFirstViewCreated = true; }
   bool IsFirstViewCreated() const { return mFirstViewCreated; }
 
@@ -89,10 +137,17 @@ protected:
 
 private:
   nsWindow();
+  void ConfigureChromeAPZ();
+  void EndChromeInputTransaction();
   nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
 
   bool mFirstViewCreated;
+  bool mChromeInputReady;
+  bool mChromeWindowFocused;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.
+  EmbedLitePuppetWidget* mChromeHostedWidget; // Not owned.
+  RefPtr<EmbedLiteChromeInputTransactionListener>
+    mChromeInputTransactionListener;
   InputContext mInputContext;
 
   typedef std::list<EmbedContentController *> ControllerList;

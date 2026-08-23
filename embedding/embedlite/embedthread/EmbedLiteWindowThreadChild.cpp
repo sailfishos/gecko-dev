@@ -10,8 +10,12 @@
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteWindowThreadChild::EmbedLiteWindowThreadChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener)
-  : EmbedLiteWindowChild(width, height, id, aListener)
+EmbedLiteWindowThreadChild::EmbedLiteWindowThreadChild(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    EmbedLiteWindowListener *aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
+  : EmbedLiteWindowChild(width, height, id, aListener, chromeHosted,
+                         initialContentURI)
 {
   LOGT();
 }
@@ -23,4 +27,3 @@ EmbedLiteWindowThreadChild::~EmbedLiteWindowThreadChild()
 
 } // namespace embedlite
 } // namespace mozilla
-

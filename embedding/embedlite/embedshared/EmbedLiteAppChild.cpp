@@ -28,7 +28,6 @@
 #include "mozilla/Unused.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
@@ -304,8 +303,7 @@ mozilla::ipc::IPCResult EmbedLiteAppChild::RecvLoadGlobalStyleSheet(const nsCStr
 mozilla::ipc::IPCResult EmbedLiteAppChild::RecvLoadComponentManifest(const nsCString &manifest)
 {
   nsCOMPtr<nsIFile> f;
-  NS_NewNativeLocalFile(manifest, true,
-                        getter_AddRefs(f));
+  NS_NewNativeLocalFile(manifest, getter_AddRefs(f));
   if (f) {
     LOGT("Loading manifest: %s", manifest.get());
     XRE_AddManifestLocation(NS_APP_LOCATION, f);

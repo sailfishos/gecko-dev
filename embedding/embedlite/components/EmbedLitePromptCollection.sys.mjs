@@ -2,11 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
-/**
- * Implements nsIPromptCollection for EmbedLite.
- */
 export class EmbedLitePromptCollection {
   confirmRepost(browsingContext) {
     let brandName;
@@ -19,16 +14,11 @@ export class EmbedLitePromptCollection {
     let message;
     let resendLabel;
     try {
-      if (brandName) {
-        message = this.stringBundles.app.formatStringFromName(
-          "confirmRepostPrompt",
-          [brandName]
-        );
-      } else {
-        message = this.stringBundles.app.GetStringFromName(
-          "confirmRepostPrompt"
-        );
-      }
+      message = brandName
+        ? this.stringBundles.app.formatStringFromName("confirmRepostPrompt", [
+            brandName,
+          ])
+        : this.stringBundles.app.GetStringFromName("confirmRepostPrompt");
       resendLabel =
         this.stringBundles.app.GetStringFromName("resendButton.label");
     } catch (exception) {
@@ -36,29 +26,29 @@ export class EmbedLitePromptCollection {
       return false;
     }
 
-    let contentViewer = browsingContext?.docShell?.contentViewer;
-    let modalType = contentViewer?.isTabModalPromptAllowed
+    const contentViewer = browsingContext?.docShell?.docViewer;
+    const modalType = contentViewer?.isTabModalPromptAllowed
       ? Ci.nsIPromptService.MODAL_TYPE_CONTENT
       : Ci.nsIPromptService.MODAL_TYPE_WINDOW;
-    let buttonFlags =
-      (Ci.nsIPromptService.BUTTON_TITLE_IS_STRING *
-        Ci.nsIPromptService.BUTTON_POS_0) |
-      (Ci.nsIPromptService.BUTTON_TITLE_CANCEL *
-        Ci.nsIPromptService.BUTTON_POS_1);
-    let buttonPressed = Services.prompt.confirmExBC(
-      browsingContext,
-      modalType,
-      null,
-      message,
-      buttonFlags,
-      resendLabel,
-      null,
-      null,
-      null,
-      {}
+    const buttonFlags =
+      Ci.nsIPromptService.BUTTON_TITLE_IS_STRING *
+        Ci.nsIPromptService.BUTTON_POS_0 |
+      Ci.nsIPromptService.BUTTON_TITLE_CANCEL *
+        Ci.nsIPromptService.BUTTON_POS_1;
+    return (
+      Services.prompt.confirmExBC(
+        browsingContext,
+        modalType,
+        null,
+        message,
+        buttonFlags,
+        resendLabel,
+        null,
+        null,
+        null,
+        {}
+      ) === 0
     );
-
-    return buttonPressed === 0;
   }
 
   async asyncBeforeUnloadCheck(browsingContext) {
@@ -66,7 +56,6 @@ export class EmbedLitePromptCollection {
     let message;
     let leaveLabel;
     let stayLabel;
-
     try {
       title = this.stringBundles.dom.GetStringFromName("OnBeforeUnloadTitle");
       message = this.stringBundles.dom.GetStringFromName(
@@ -83,8 +72,7 @@ export class EmbedLitePromptCollection {
       return false;
     }
 
-    let contentViewer = browsingContext?.docShell?.contentViewer;
-
+    const contentViewer = browsingContext?.docShell?.docViewer;
     if (
       (contentViewer && !contentViewer.isTabModalPromptAllowed) ||
       !browsingContext.ancestorsAreCurrent
@@ -93,14 +81,31 @@ export class EmbedLitePromptCollection {
       return true;
     }
 
-    let buttonFlags =
-      Ci.nsIPromptService.BUTTON_POS_0_DEFAULT |
-      (Ci.nsIPromptService.BUTTON_TITLE_IS_STRING *
-        Ci.nsIPromptService.BUTTON_POS_0) |
-      (Ci.nsIPromptService.BUTTON_TITLE_IS_STRING *
-        Ci.nsIPromptService.BUTTON_POS_1);
+    const embedService = Cc[
+      "@mozilla.org/embedlite-app-service;1"
+    ].getService(Ci.nsIEmbedAppService);
+    try {
+      return await embedService.asyncChromeTabBeforeUnloadCheck(
+        browsingContext,
+        title,
+        message,
+        leaveLabel,
+        stayLabel
+      );
+    } catch (exception) {
+      if (exception.result !== Cr.NS_ERROR_NOT_AVAILABLE) {
+        console.error("Failed to open chrome-tab beforeunload prompt");
+        return false;
+      }
+    }
 
-    let result = await Services.prompt.asyncConfirmEx(
+    const buttonFlags =
+      Ci.nsIPromptService.BUTTON_POS_0_DEFAULT |
+      Ci.nsIPromptService.BUTTON_TITLE_IS_STRING *
+        Ci.nsIPromptService.BUTTON_POS_0 |
+      Ci.nsIPromptService.BUTTON_TITLE_IS_STRING *
+        Ci.nsIPromptService.BUTTON_POS_1;
+    const result = await Services.prompt.asyncConfirmEx(
       browsingContext,
       Services.prompt.MODAL_TYPE_CONTENT,
       title,
@@ -113,9 +118,8 @@ export class EmbedLitePromptCollection {
       false,
       { inPermitUnload: true }
     );
-
     return (
-      result.QueryInterface(Ci.nsIPropertyBag2).get("buttonNumClicked") == 0
+      result.QueryInterface(Ci.nsIPropertyBag2).get("buttonNumClicked") === 0
     );
   }
 
@@ -123,7 +127,6 @@ export class EmbedLitePromptCollection {
     let title;
     let message;
     let acceptLabel;
-
     try {
       title = this.stringBundles.dom.GetStringFromName(
         "FolderUploadPrompt.title"
@@ -140,12 +143,11 @@ export class EmbedLitePromptCollection {
       return false;
     }
 
-    let buttonFlags =
+    const buttonFlags =
       Services.prompt.BUTTON_TITLE_IS_STRING *
         Services.prompt.BUTTON_POS_0 +
       Services.prompt.BUTTON_TITLE_CANCEL * Services.prompt.BUTTON_POS_1 +
       Services.prompt.BUTTON_POS_1_DEFAULT;
-
     return (
       Services.prompt.confirmExBC(
         browsingContext,
@@ -170,13 +172,12 @@ const BUNDLES = {
 };
 
 EmbedLitePromptCollection.prototype.stringBundles = {};
-
 for (const [bundleName, bundleUrl] of Object.entries(BUNDLES)) {
-  XPCOMUtils.defineLazyGetter(
+  ChromeUtils.defineLazyGetter(
     EmbedLitePromptCollection.prototype.stringBundles,
     bundleName,
     function () {
-      let bundle = Services.strings.createBundle(bundleUrl);
+      const bundle = Services.strings.createBundle(bundleUrl);
       if (!bundle) {
         throw new Error("String bundle for prompt not present!");
       }

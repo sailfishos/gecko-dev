@@ -17,7 +17,7 @@ class nsPrintSettingsQt : public nsPrintSettings
 {
 public:
     NS_DECL_ISUPPORTS_INHERITED
-    NS_DECLARE_STATIC_IID_ACCESSOR(NS_PRINTSETTINGSQT_IID)
+    NS_INLINE_DECL_STATIC_IID(NS_PRINTSETTINGSQT_IID)
 
     nsPrintSettingsQt();
 
@@ -95,5 +95,4 @@ protected:
     int16_t mOutputFormat = kOutputFormatNative;
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(nsPrintSettingsQt, NS_PRINTSETTINGSQT_IID)
 #endif // nsPrintSettingsQt_h_

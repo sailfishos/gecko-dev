@@ -13,10 +13,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 9 insertions(+), 1 deletion(-)
 
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 9836c60d4923..0478f241748f 100644
+index 723b4c0a54a8..0002877e2132 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
-@@ -3179,7 +3179,15 @@ nsDocShell::GetDomWindow(mozIDOMWindowProxy** aWindow) {
+@@ -2967,7 +2967,15 @@ nsDocShell::GetDomWindow(mozIDOMWindowProxy** aWindow) {
  NS_IMETHODIMP
  nsDocShell::GetMessageManager(ContentFrameMessageManager** aMessageManager) {
    RefPtr<ContentFrameMessageManager> mm;

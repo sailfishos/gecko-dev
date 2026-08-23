@@ -21,10 +21,12 @@
 #include "nsXPCOMPrivate.h"
 #include "GeckoLoader.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
+#include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/ipc/ProcessUtils.h"
+#include "mozilla/dom/RemoteType.h"
 #include "EmbedLiteApp.h"
 #include "GeckoProfiler.h"
 #include "EmbedLiteAppProcessParent.h"
-#include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h" // for mozilla::Runnable
 #include "base/command_line.h"
@@ -37,11 +39,7 @@
 
 #include "EmbedLiteViewProcessParent.h"
 
-static BrowserProcessSubThread* sIOThread;
-
 using namespace mozilla::dom;
-using namespace base;
-using base::KillProcess;
 using namespace mozilla::dom::indexedDB;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -103,33 +101,30 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content);
 
   PR_SetEnv("NECKO_SEPARATE_STACKS=1");
-  if (!BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
-      UniquePtr<BrowserProcessSubThread> ioThread(new BrowserProcessSubThread(BrowserProcessSubThread::IO));
-    if (!ioThread.get()) {
-      return;
-    }
-
-    base::Thread::Options options;
-    options.message_loop_type = MessageLoop::TYPE_IO;
-    if (!ioThread->StartWithOptions(options)) {
-      return;
-    }
-    sIOThread = ioThread.release();
-  }
 
   NS_ASSERTION(false, "Fix IToplevelProtocol::SetTransport(mSubprocess->GetChannel())");
   //IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
 
-  // set gGREBinPath
-  gGREBinPath = ToNewUnicode(nsDependentCString(getenv("GRE_HOME")));
+  // NS_InitXPCOM sets this to the current GRE directory. The child launcher
+  // uses it to locate plugin-container.
+  MOZ_RELEASE_ASSERT(gGREBinPath);
 
   if (!CommandLine::IsInitialized()) {
     CommandLine::Init(0, nullptr);
   }
 
-  std::vector<std::string> extraArgs;
-  extraArgs.push_back("-embedlite");
-  mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
+  geckoargs::ChildProcessArgs extraArgs;
+  geckoargs::sEmbedLite.Put(true, extraArgs);
+
+  SharedPreferenceSerializer prefSerializer;
+  MOZ_RELEASE_ASSERT(prefSerializer.SerializeToSharedMemory(
+      GeckoProcessType_Content, DEFAULT_REMOTE_TYPE));
+  prefSerializer.AddSharedPrefCmdLineArgs(*mSubprocess, extraArgs);
+  ExportSharedJSInit(*mSubprocess, extraArgs);
+  ProcessChild::AddPlatformBuildID(extraArgs);
+
+  MOZ_RELEASE_ASSERT(
+      mSubprocess->LaunchAndWaitForProcessHandle(std::move(extraArgs)));
   bool opened = mSubprocess->TakeInitialEndpoint().Bind(this);
   MOZ_RELEASE_ASSERT(opened);
 }
@@ -216,8 +211,17 @@ EmbedLiteAppProcessParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aAc
 }
 
 PEmbedLiteWindowParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
+EmbedLiteAppProcessParent::AllocPEmbedLiteWindowParent(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    const uintptr_t &aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
 {
+  Unused << width;
+  Unused << height;
+  Unused << id;
+  Unused << aListener;
+  Unused << chromeHosted;
+  Unused << initialContentURI;
   LOGNI();
 
   return nullptr;
@@ -281,7 +285,7 @@ EmbedLiteAppProcessParent::ShutDownProcess(bool aCloseWithError)
   if (aCloseWithError) {
     MessageChannel* channel = GetIPCChannel();
     if (channel) {
-      channel->CloseWithError();
+      channel->InduceConnectionError();
     }
   }
 }

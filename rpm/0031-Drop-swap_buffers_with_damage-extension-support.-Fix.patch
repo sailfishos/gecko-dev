@@ -15,10 +15,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 2 insertions(+)
 
 diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
-index c1b408822384..097543c37e8b 100644
+index df6440a92f14..46f6f4f7d334 100644
 --- a/gfx/gl/GLLibraryEGL.cpp
 +++ b/gfx/gl/GLLibraryEGL.cpp
-@@ -838,6 +838,8 @@ EglDisplay::EglDisplay(const PrivateUseOnly&, GLLibraryEGL& lib,
+@@ -855,6 +855,8 @@ EglDisplay::EglDisplay(const PrivateUseOnly&, GLLibraryEGL& lib,
    MarkExtensions(rawExtString, shouldDumpExts, "display", sEGLExtensionNames,
                   &mAvailableExtensions);
  

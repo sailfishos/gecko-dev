@@ -170,8 +170,8 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 #endif
       }
       LOGF("Creating profile in:%s\n", pr.get());
-      rv = NS_NewNativeLocalFile(pr, PR_FALSE,
-                                 getter_AddRefs(kDirectoryProvider.sProfileDir));
+      rv = NS_NewNativeLocalFile(
+          pr, getter_AddRefs(kDirectoryProvider.sProfileDir));
       if (NS_FAILED(rv)) {
         LOGE("NS_NewNativeLocalFile failed.");
         return false;
@@ -218,7 +218,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 #ifdef XP_WIN
   greHomeCSTR.ReplaceChar('/', '\\');
 #endif
-  rv = NS_NewNativeLocalFile(greHomeCSTR, PR_FALSE,
+  rv = NS_NewNativeLocalFile(greHomeCSTR,
                              getter_AddRefs(kDirectoryProvider.sGREDir));
 
   // xul application info component defined in embedding/embedlite/components/components.conf

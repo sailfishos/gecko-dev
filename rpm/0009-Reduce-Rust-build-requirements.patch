@@ -24,30 +24,46 @@ internal compiler error: Segmentation fault
 Dropping to -O1 allows the build to go through. Updating the compiler
 may be a better fix.
 ---
- build/moz.configure/rust.configure | 4 ++--
+ build/moz.configure/rust.configure | 6 ++----
  gfx/wr/swgl/build.rs               | 2 +-
- 2 files changed, 3 insertions(+), 3 deletions(-)
+ 2 files changed, 3 insertions(+), 5 deletions(-)
 
 diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
-index 4a4089067ee3..4617a1a7aa29 100644
+index 2e6921ab719f..9c066d8a32b5 100644
 --- a/build/moz.configure/rust.configure
 +++ b/build/moz.configure/rust.configure
-@@ -668,8 +668,8 @@ def rust_compile_flags(
+@@ -642,7 +642,6 @@ set_config("CARGO_PROFILE_DEV_OPT_LEVEL", rustc_opt_level)
+     rustc_opt_level,
+     debug_rust,
+     target,
+-    "--enable-debug-symbols",
+     "--enable-frame-pointers",
+     path_remapping,
+     path_remappings,
+@@ -651,7 +650,6 @@ def rust_compile_flags(
+     opt_level,
+     debug_rust,
+     target,
+-    debug_symbols,
+     frame_pointers,
+     path_remapping,
+     path_remappings,
+@@ -676,8 +674,8 @@ def rust_compile_flags(
      if opt_level == "0" and not debug_rust:
          debug_assertions = False
  
 -    if debug_symbols:
 -        debug_info = "2"
-+    #if debug_symbols:
-+    #    debug_info = "2"
++    # Keep Rust debug info disabled to avoid excessive compiler memory use on
++    # the constrained Sailfish OS build workers.
  
      opts = []
  
 diff --git a/gfx/wr/swgl/build.rs b/gfx/wr/swgl/build.rs
-index d02797d43797..9402acde864c 100644
+index 66e22ce7d5a8..1687b4dfe8b4 100644
 --- a/gfx/wr/swgl/build.rs
 +++ b/gfx/wr/swgl/build.rs
-@@ -171,7 +171,7 @@ fn main() {
+@@ -214,7 +214,7 @@ fn main() {
          }
          // SWGL relies heavily on inlining for performance so override -Oz with -O2
          if tool.args().contains(&"-Oz".into()) {

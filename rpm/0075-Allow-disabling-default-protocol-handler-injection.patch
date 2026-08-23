@@ -11,14 +11,15 @@ and leave the embedder without a usable chooser.
 Add a pref-gated opt-out that skips default handler injection and removes
 previously injected stub entries. Real user-selected handlers are left alone.
 ---
- .../exthandler/ExtHandlerService.sys.mjs      | 24 +++++++++++++++++++
- 1 file changed, 24 insertions(+)
+ .../exthandler/ExtHandlerService.sys.mjs      | 24 +++++++++++++
+ .../unit/test_defaults_handlerService.js      | 36 +++++++++++++++++++
+ 2 files changed, 60 insertions(+)
 
 diff --git a/uriloader/exthandler/ExtHandlerService.sys.mjs b/uriloader/exthandler/ExtHandlerService.sys.mjs
-index 85cff866b2c4..8b43e2f4f8f7 100644
+index f5bca0ed6d16..8d5a620c9bd7 100644
 --- a/uriloader/exthandler/ExtHandlerService.sys.mjs
 +++ b/uriloader/exthandler/ExtHandlerService.sys.mjs
-@@ -110,6 +110,16 @@ HandlerService.prototype = {
+@@ -97,6 +97,16 @@ HandlerService.prototype = {
     */
    _injectDefaultProtocolHandlersIfNeeded() {
      try {
@@ -35,7 +36,7 @@ index 85cff866b2c4..8b43e2f4f8f7 100644
        let defaultHandlersVersion = Services.prefs.getIntPref(
          "gecko.handlerService.defaultHandlersVersion",
          0
-@@ -128,6 +138,20 @@ HandlerService.prototype = {
+@@ -115,6 +125,20 @@ HandlerService.prototype = {
      }
    },
  
@@ -56,3 +57,50 @@ index 85cff866b2c4..8b43e2f4f8f7 100644
    _injectDefaultProtocolHandlers() {
      let locale = Services.locale.appLocaleAsBCP47;
  
+diff --git a/uriloader/exthandler/tests/unit/test_defaults_handlerService.js b/uriloader/exthandler/tests/unit/test_defaults_handlerService.js
+index 2b250ddb26f6..6c48193ac20d 100644
+--- a/uriloader/exthandler/tests/unit/test_defaults_handlerService.js
++++ b/uriloader/exthandler/tests/unit/test_defaults_handlerService.js
+@@ -63,6 +63,42 @@ add_task(async function test_check_defaults_get_added() {
+   }
+ });
+ 
++add_task(async function test_disable_default_protocol_handlers() {
++  const pref = "gecko.handlerService.disableDefaultProtocolHandlers";
++  let handlerService = gHandlerService.wrappedJSObject;
++  let schemes = handlerService._store.data.schemes;
++
++  try {
++    Services.prefs.setBoolPref(pref, true);
++
++    schemes.mailto = {
++      stubEntry: true,
++      handlers: [null],
++    };
++    handlerService._injectDefaultProtocolHandlersIfNeeded();
++    Assert.ok(
++      !("mailto" in schemes),
++      "Previously injected stub handlers should be removed"
++    );
++
++    let userEntry = {
++      stubEntry: false,
++      handlers: [null],
++      alwaysAskBeforeHandling: false,
++    };
++    schemes.mailto = userEntry;
++    handlerService._injectDefaultProtocolHandlersIfNeeded();
++    Assert.strictEqual(
++      schemes.mailto,
++      userEntry,
++      "User-managed protocol handlers should be preserved"
++    );
++  } finally {
++    Services.prefs.clearUserPref(pref);
++    await deleteHandlerStore();
++  }
++});
++
+ add_task(async function test_check_default_modification() {
+   Assert.ok(
+     true,

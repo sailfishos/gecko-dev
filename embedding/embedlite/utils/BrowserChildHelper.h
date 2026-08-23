@@ -34,7 +34,6 @@ namespace embedlite {
 
 class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
                                          public nsIMessageSender,
-                                         public dom::DispatcherTrait,
                                          public nsSupportsWeakReference {
  public:
   explicit BrowserChildHelperMessageManager(BrowserChildHelper* aBrowserChild);
@@ -60,14 +59,7 @@ class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
   }
 
   // Dispatch a runnable related to the global.
-  virtual nsresult Dispatch(mozilla::TaskCategory aCategory,
-                            already_AddRefed<nsIRunnable>&& aRunnable) override;
-
-  virtual nsISerialEventTarget* EventTargetFor(
-      mozilla::TaskCategory aCategory) const override;
-
-  virtual AbstractThread* AbstractMainThreadFor(
-      mozilla::TaskCategory aCategory) override;
+  nsresult Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) const;
 
   RefPtr<BrowserChildHelper> mBrowserChildHelper;
 
@@ -185,4 +177,3 @@ private:
 }
 
 #endif
-

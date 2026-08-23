@@ -1,101 +1,36 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Mon, 4 May 2026 08:05:00 +0200
-Subject: [PATCH 68/68] Restore EmbedLite native prompt dialogs
+Date: Wed, 5 Aug 2026 17:35:32 +0200
+Subject: Restore EmbedLite native prompt dialogs
 
-Route synchronous alert, confirm and prompt calls through the EmbedLite
-application-service message bridge before falling back to the upstream
-commonDialog.xhtml window prompt.
+Route alert, confirm, and text prompts through the EmbedLite application
+service before falling back to ESR140's prompt actors or window dialogs.
 
-The Sailfish WebView popup layer still listens for embed:alert,
-embed:confirm and embed:prompt and responds with the corresponding
-*response messages.  ESR115's default prompt service bypassed that bridge
-and tried to create a Gecko chrome dialog window instead, which is not the
-native Sailfish UI path and can deadlock the EmbedLite window creation path.
+Use the same Promise for synchronous and asynchronous callers so async prompt
+APIs do not enter a nested event loop. Validate the target window on every
+response and always unwind listener and modal-window state.
 
-The same bridge also handles username/password auth prompts through the
-existing embed:auth dialog.  LoginManagerPrompter uses the async promptAuth
-entry point for HTTP auth, so route async promptUserAndPass and
-promptPassword requests through EmbedLite too, preserving the remember-login
-checkbox state for the password manager.
+HTTP authentication remains with LoginManagerPrompter, which already owns the
+asynchronous EmbedLite authentication bridge.
 ---
- .../components/prompts/src/Prompter.sys.mjs   | 342 +++++++++++++++++-
- 1 file changed, 328 insertions(+), 14 deletions(-)
+ .../components/prompts/src/Prompter.sys.mjs   | 210 ++++++++++++++++++
+ 1 file changed, 210 insertions(+)
 
 diff --git a/toolkit/components/prompts/src/Prompter.sys.mjs b/toolkit/components/prompts/src/Prompter.sys.mjs
-index fe4499237824..b054a849e3c6 100644
+index f196f5ee1f57..46823fd129d0 100644
 --- a/toolkit/components/prompts/src/Prompter.sys.mjs
 +++ b/toolkit/components/prompts/src/Prompter.sys.mjs
-@@ -17,6 +17,57 @@ const {
- const COMMON_DIALOG = "chrome://global/content/commonDialog.xhtml";
- const SELECT_DIALOG = "chrome://global/content/selectDialog.xhtml";
- 
-+function dispatchAsyncAuthPrompt(callback, context, authInfo, runPrompt) {
-+  let completed = false;
-+
-+  let cancelable = {
-+    QueryInterface: ChromeUtils.generateQI(["nsICancelable"]),
-+
-+    cancel() {
-+      if (completed) {
-+        return;
-+      }
-+
-+      completed = true;
-+      try {
-+        callback.onAuthCancelled(context, false);
-+      } catch (e) {}
-+    },
-+  };
-+
-+  // nsIAuthPrompt2 requires that the callback is not invoked before
-+  // asyncPromptAuth returns.
-+  Services.tm.dispatchToMainThread(async () => {
-+    if (completed) {
-+      return;
-+    }
-+
-+    let ok = false;
-+    let promptFailed = false;
-+    try {
-+      ok = await runPrompt();
-+    } catch (e) {
-+      promptFailed = true;
-+      console.error("Prompter: asyncPromptAuth failed: ", e);
-+    }
-+
-+    if (completed) {
-+      return;
-+    }
-+
-+    completed = true;
-+    try {
-+      if (ok) {
-+        callback.onAuthAvailable(context, authInfo);
-+      } else {
-+        callback.onAuthCancelled(context, !promptFailed);
-+      }
-+    } catch (e) {}
-+  });
-+
-+  return cancelable;
-+}
-+
- export function Prompter() {
-   // Note that EmbedPrompter clones this implementation.
- }
-@@ -1022,11 +1073,228 @@ class ModalPrompter {
+@@ -1021,6 +1021,211 @@ class ModalPrompter {
  
    /* ---------- internal methods ---------- */
  
-+  openEmbedLitePromptSync(args) {
++  openEmbedLitePrompt(args) {
 +    if (!this.browsingContext) {
-+      return false;
++      return null;
 +    }
 +
 +    let topic;
 +    let responseTopic;
-+
 +    switch (args.promptType) {
 +      case "alert":
 +      case "alertCheck":
@@ -111,13 +46,8 @@ index fe4499237824..b054a849e3c6 100644
 +        topic = "embed:prompt";
 +        responseTopic = "promptresponse";
 +        break;
-+      case "promptUserAndPass":
-+      case "promptPassword":
-+        topic = "embed:auth";
-+        responseTopic = "authresponse";
-+        break;
 +      default:
-+        return false;
++        return null;
 +    }
 +
 +    let embedService;
@@ -125,30 +55,29 @@ index fe4499237824..b054a849e3c6 100644
 +      embedService = Cc["@mozilla.org/embedlite-app-service;1"].getService(
 +        Ci.nsIEmbedAppService
 +      );
-+    } catch (e) {
-+      return false;
++    } catch (_) {
++      return null;
 +    }
 +
-+    let win;
++    let embedWindow;
 +    try {
-+      win = this.browsingContext.top?.window || this.browsingContext.window;
-+    } catch (e) {
-+      return false;
++      embedWindow =
++        this.browsingContext.top?.window || this.browsingContext.window;
++    } catch (_) {
++      return null;
 +    }
-+
-+    if (!win) {
-+      return false;
++    if (!embedWindow) {
++      return null;
 +    }
 +
 +    let winId;
 +    try {
-+      winId = embedService.getIDByWindow(win);
-+    } catch (e) {
-+      return false;
++      winId = embedService.getIDByWindow(embedWindow);
++    } catch (_) {
++      return null;
 +    }
-+
 +    if (!winId) {
-+      return false;
++      return null;
 +    }
 +
 +    let payload = {
@@ -157,105 +86,112 @@ index fe4499237824..b054a849e3c6 100644
 +      text: args.text,
 +      inputs: [],
 +    };
-+
-+    if (args.button0Label || args.button1Label || args.button2Label) {
-+      payload.buttons = [
-+        args.button0Label,
-+        args.button1Label,
-+        args.button2Label,
-+      ].filter(Boolean);
++    let buttons = [
++      args.button0Label,
++      args.button1Label,
++      args.button2Label,
++    ].filter(Boolean);
++    if (buttons.length) {
++      payload.buttons = buttons;
 +    }
 +
 +    if (args.promptType == "prompt") {
 +      payload.defaultValue = args.value || "";
 +      payload.inputs.push({ value: args.value || "" });
 +    }
-+
-+    if (args.promptType == "promptUserAndPass") {
-+      payload.inputs.push({
-+        type: "textbox",
-+        value: args.user || "",
-+        hint: "username",
-+        autofocus: true,
-+      });
-+      payload.inputs.push({
-+        type: "password",
-+        value: args.pass || "",
-+        hint: "password",
-+        autofocus: false,
-+      });
-+    } else if (args.promptType == "promptPassword") {
-+      payload.inputs.push({
-+        type: "password",
-+        value: args.pass || "",
-+        hint: "password",
-+        autofocus: true,
-+      });
-+    }
-+
 +    if (args.checkLabel) {
-+      let isAuthPrompt =
-+        args.promptType == "promptUserAndPass" ||
-+        args.promptType == "promptPassword";
 +      payload.inputs.push({
 +        label: args.checkLabel,
-+        hint: isAuthPrompt ? "remember" : "preventAddionalDialog",
++        hint: "preventAddionalDialog",
 +        checked: !!args.checked,
 +      });
 +    }
 +
-+    let closed = false;
-+    let handleResponse = response => {
-+      if (closed) {
-+        return;
-+      }
++    let listenerRegistered = false;
++    let enteredModalState = false;
++    let firedDialogEvent = false;
++    let promptWindow;
++    let windowUtils;
++    let listener;
 +
-+      if ("checkvalue" in response) {
-+        args.checked = !!response.checkvalue;
++    let cleanup = () => {
++      if (listenerRegistered) {
++        try {
++          embedService.removeMessageListener(responseTopic, listener);
++        } catch (e) {
++          console.warn("EmbedLite prompt listener cleanup failed: ", e);
++        }
++        listenerRegistered = false;
 +      }
-+      if ("accepted" in response) {
-+        args.ok = !!response.accepted;
-+        args.buttonNumClicked = response.accepted ? 0 : 1;
++      try {
++        if (enteredModalState) {
++          windowUtils.leaveModalState();
++          enteredModalState = false;
++        }
++        if (firedDialogEvent) {
++          PromptUtils.fireDialogEvent(
++            promptWindow,
++            "DOMModalDialogClosed"
++          );
++          firedDialogEvent = false;
++        }
++      } catch (e) {
++        console.warn("EmbedLite prompt modal cleanup failed: ", e);
 +      }
-+      if ("promptvalue" in response) {
-+        args.value = response.promptvalue;
-+      }
-+      if ("username" in response) {
-+        args.user = response.username;
-+      }
-+      if ("password" in response) {
-+        args.pass = response.password;
-+      }
-+      if ("remember" in response) {
-+        args.checked = !!response.remember;
-+      }
-+
-+      closed = true;
 +    };
-+    let appServiceListener = {
++
++    let resolvePrompt;
++    let result = new Promise(resolve => {
++      resolvePrompt = resolve;
++    });
++    let closed = false;
++    listener = {
 +      QueryInterface: ChromeUtils.generateQI(["nsIEmbedMessageListener"]),
 +
 +      onMessageReceived(messageName, message) {
++        if (closed) {
++          return;
++        }
++
++        let response;
 +        try {
-+          handleResponse(JSON.parse(message));
++          response = JSON.parse(message);
 +        } catch (e) {
 +          console.warn("EmbedLite prompt response parsing failed: ", e);
++          return;
 +        }
++        if (
++          !response ||
++          typeof response != "object" ||
++          response.winId !== winId
++        ) {
++          return;
++        }
++
++        if ("checkvalue" in response) {
++          args.checked = !!response.checkvalue;
++        }
++        if ("accepted" in response) {
++          args.ok = !!response.accepted;
++          args.buttonNumClicked = response.accepted ? 0 : 1;
++        }
++        if ("promptvalue" in response) {
++          args.value = response.promptvalue;
++        }
++
++        closed = true;
++        cleanup();
++        resolvePrompt(args);
 +      },
 +    };
 +
-+    let promptWindow;
-+    try {
-+      promptWindow = this.browsingContext.window;
-+    } catch (e) {
-+      promptWindow = null;
-+    }
-+    let windowUtils;
-+    let firedDialogEvent = false;
-+    if (promptWindow) {
++    const IS_CONTENT =
++      Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT;
++    if (IS_CONTENT) {
 +      try {
++        promptWindow = this.browsingContext.window;
 +        let docShell = this.browsingContext.docShell;
-+        let inPermitUnload = docShell?.contentViewer?.inPermitUnload;
++        let inPermitUnload = docShell?.docViewer?.inPermitUnload;
 +        args.inPermitUnload = inPermitUnload;
 +        PromptUtils.fireDialogEvent(
 +          promptWindow,
@@ -271,223 +207,40 @@ index fe4499237824..b054a849e3c6 100644
 +        );
 +        firedDialogEvent = true;
 +        windowUtils = promptWindow.windowUtils;
-+        windowUtils?.enterModalState();
++        if (windowUtils) {
++          windowUtils.enterModalState();
++          enteredModalState = true;
++        }
 +      } catch (e) {
 +        console.warn("EmbedLite prompt modal setup failed: ", e);
 +      }
 +    }
 +
-+    embedService.addMessageListener(responseTopic, appServiceListener);
 +    try {
++      embedService.addMessageListener(responseTopic, listener);
++      listenerRegistered = true;
 +      embedService.sendAsyncMessage(winId, topic, JSON.stringify(payload));
-+      Services.tm.spinEventLoopUntilOrQuit(
-+        "prompts/Prompter.sys.mjs:openEmbedLitePromptSync",
-+        () => closed
-+      );
 +    } catch (e) {
-+      return false;
-+    } finally {
-+      embedService.removeMessageListener(responseTopic, appServiceListener);
-+      try {
-+        windowUtils?.leaveModalState();
-+        if (firedDialogEvent) {
-+          PromptUtils.fireDialogEvent(promptWindow, "DOMModalDialogClosed");
-+        }
-+      } catch (e) {
-+        console.warn("EmbedLite prompt modal cleanup failed: ", e);
-+      }
++      cleanup();
++      console.warn("EmbedLite prompt dispatch failed: ", e);
++      return null;
 +    }
 +
-+    return closed;
++    return result;
 +  }
 +
    /**
     * Synchronous wrapper around {@link ModalPrompter#openPrompt}
-    * @param {Object} args Prompt arguments. When prompt has been closed, they are updated to reflect the result state.
-    */
-   openPromptSync(args) {
-+    if (this.openEmbedLitePromptSync(args)) {
-+      return;
-+    }
-+
-     let closed = false;
-     this.openPrompt(args)
-       .then(returnedArgs => {
-@@ -1046,6 +1314,10 @@ class ModalPrompter {
+    *
+@@ -1046,6 +1251,11 @@ class ModalPrompter {
    }
  
    async openPrompt(args) {
-+    if (this.openEmbedLitePromptSync(args)) {
-+      return args;
++    let embedLitePrompt = this.openEmbedLitePrompt(args);
++    if (embedLitePrompt) {
++      return embedLitePrompt;
 +    }
 +
      if (!this.browsingContext) {
        // We don't have a browsing context, fallback to a window prompt.
        args.modalType = MODAL_TYPE_WINDOW;
-@@ -1502,7 +1774,15 @@ class ModalPrompter {
-     return ok;
-   }
- 
--  nsIPrompt_promptUsernameAndPassword(channel, title, text, user, pass) {
-+  nsIPrompt_promptUsernameAndPassword(
-+    channel,
-+    title,
-+    text,
-+    user,
-+    pass,
-+    checkLabel = null,
-+    checkValue = null
-+  ) {
-     if (!title) {
-       title = InternalPromptUtils.getLocalizedString(
-         "PromptUsernameAndPassword3",
-@@ -1517,6 +1797,8 @@ class ModalPrompter {
-       text,
-       user: this.async ? user : user.value,
-       pass: this.async ? pass : pass.value,
-+      checkLabel,
-+      checked: checkValue?.value ?? false,
-       button0Label: InternalPromptUtils.getLocalizedString("SignIn"),
-       ok: false,
-     };
-@@ -1525,6 +1807,7 @@ class ModalPrompter {
-       return this.openPromptAsync(args, result => ({
-         user: result.user,
-         pass: result.pass,
-+        checked: !!result.checked,
-         ok: result.ok,
-       }));
-     }
-@@ -1534,6 +1817,9 @@ class ModalPrompter {
-     // Did user click Ok or Cancel?
-     let ok = args.ok;
-     if (ok) {
-+      if (checkValue) {
-+        checkValue.value = args.checked;
-+      }
-       user.value = args.user;
-       pass.value = args.pass;
-     }
-@@ -1541,7 +1827,14 @@ class ModalPrompter {
-     return ok;
-   }
- 
--  nsIPrompt_promptPassword(channel, title, text, pass) {
-+  nsIPrompt_promptPassword(
-+    channel,
-+    title,
-+    text,
-+    pass,
-+    checkLabel = null,
-+    checkValue = null
-+  ) {
-     if (!title) {
-       title = InternalPromptUtils.getLocalizedString("PromptPassword3", [
-         InternalPromptUtils.getBrandFullName(),
-@@ -1554,6 +1847,8 @@ class ModalPrompter {
-       title,
-       text,
-       pass: this.async ? pass : pass.value,
-+      checkLabel,
-+      checked: checkValue?.value ?? false,
-       button0Label: InternalPromptUtils.getLocalizedString("SignIn"),
-       ok: false,
-     };
-@@ -1561,6 +1856,7 @@ class ModalPrompter {
-     if (this.async) {
-       return this.openPromptAsync(args, result => ({
-         pass: result.pass,
-+        checked: !!result.checked,
-         ok: result.ok,
-       }));
-     }
-@@ -1570,6 +1866,9 @@ class ModalPrompter {
-     // Did user click Ok or Cancel?
-     let ok = args.ok;
-     if (ok) {
-+      if (checkValue) {
-+        checkValue.value = args.checked;
-+      }
-       pass.value = args.pass;
-     }
- 
-@@ -1651,7 +1950,7 @@ class ModalPrompter {
- 
-   /* ----------  nsIAuthPrompt2  ---------- */
- 
--  promptAuth(channel, level, authInfo) {
-+  promptAuth(channel, level, authInfo, checkLabel = null, checkValue = null) {
-     let message = InternalPromptUtils.makeAuthMessage(this, channel, authInfo);
- 
-     let [username, password] = InternalPromptUtils.getAuthInfo(authInfo);
-@@ -1661,14 +1960,23 @@ class ModalPrompter {
- 
-     let result;
-     if (authInfo.flags & Ci.nsIAuthInformation.ONLY_PASSWORD) {
--      result = this.nsIPrompt_promptPassword(channel, null, message, passParam);
-+      result = this.nsIPrompt_promptPassword(
-+        channel,
-+        null,
-+        message,
-+        passParam,
-+        checkLabel,
-+        checkValue
-+      );
-     } else {
-       result = this.nsIPrompt_promptUsernameAndPassword(
-         channel,
-         null,
-         message,
-         userParam,
--        passParam
-+        passParam,
-+        checkLabel,
-+        checkValue
-       );
-     }
- 
-@@ -1676,8 +1984,16 @@ class ModalPrompter {
-     if (this.async) {
-       return result.then(bag => {
-         let ok = bag.getProperty("ok");
-+        if (checkValue) {
-+          try {
-+            checkValue.value = bag.getProperty("checked");
-+          } catch (_) {}
-+        }
-         if (ok) {
--          let username = bag.getProperty("user");
-+          let username =
-+            authInfo.flags & Ci.nsIAuthInformation.ONLY_PASSWORD
-+              ? userParam
-+              : bag.getProperty("user");
-           let password = bag.getProperty("pass");
-           InternalPromptUtils.setAuthInfo(authInfo, username, password);
-         }
-@@ -1706,13 +2022,9 @@ class ModalPrompter {
-     checkLabel,
-     checkValue
-   ) {
--    // Nothing calls this directly; netwerk ends up going through
--    // nsIPromptService::GetPrompt, which delegates to login manager.
--    // Login manger handles the async bits itself, and only calls out
--    // promptAuth, never asyncPromptAuth.
--    //
--    // Bug 565582 will change this.
--    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
-+    return dispatchAsyncAuthPrompt(callback, context, authInfo, () =>
-+      this.promptAuth(channel, level, authInfo, checkLabel, checkValue)
-+    );
-   }
- 
-   /* ----------  nsIWritablePropertyBag2 ---------- */
-@@ -1819,6 +2131,8 @@ AuthPromptAdapter.prototype = {
-     checkLabel,
-     checkValue
-   ) {
--    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
-+    return dispatchAsyncAuthPrompt(callback, context, authInfo, () =>
-+      this.promptAuth(channel, level, authInfo, checkLabel, checkValue)
-+    );
-   },
- };

@@ -5,6 +5,8 @@
 
 CONFIGURE_SUBST_FILES += ['installer/Makefile']
 
+JAR_MANIFESTS += ['jar.mn']
+
 DIRS += ['components', 'tests']
 
 JS_PREFERENCE_FILES += [
@@ -33,6 +35,10 @@ EXPORTS.mozilla.embedlite += [
     'EmbedInputData.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
+    'EmbedLiteChromeContentSession.h',
+    'EmbedLiteChromeInputSession.h',
+    'EmbedLiteChromeSession.h',
+    'EmbedLiteChromeTabSession.h',
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
     'EmbedLiteWindow.h',
@@ -77,6 +83,7 @@ UNIFIED_SOURCES += [
     'embedprocess/EmbedLiteViewProcessParent.cpp',
     'embedshared/EmbedLiteAppChild.cpp',
     'embedshared/EmbedLiteAppParent.cpp',
+    'embedshared/EmbedLiteChromeSessionChild.cpp',
     'embedshared/EmbedLitePuppetWidget.cpp',
     'embedshared/EmbedLiteViewChild.cpp',
     'embedshared/EmbedLiteViewParent.cpp',

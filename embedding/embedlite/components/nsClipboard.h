@@ -5,11 +5,9 @@
 #ifndef nsEmbedClipboard_h__
 #define nsEmbedClipboard_h__
 
-#include "mozilla/MozPromise.h"
 #include "mozilla/UniquePtr.h"
 #include "nsBaseClipboard.h"
 #include "nsITransferable.h"
-#include "nsIClipboardOwner.h"
 #include "nsCOMPtr.h"
 #include "nsIEmbedAppService.h"
 #include "nsIObserverService.h"
@@ -17,7 +15,7 @@
 #include "nsString.h"
 
 /* Native Qt Clipboard wrapper */
-class nsEmbedClipboard : public ClipboardSetDataHelper, public nsIObserver
+class nsEmbedClipboard final : public nsBaseClipboard, public nsIObserver
 {
 public:
     nsEmbedClipboard();
@@ -25,39 +23,39 @@ public:
     NS_DECL_ISUPPORTS_INHERITED
     NS_DECL_NSIOBSERVER
 
-    // nsIClipboard
-    NS_IMETHOD GetData(nsITransferable* aTransferable,
-                       int32_t aWhichClipboard) override;
-    NS_IMETHOD EmptyClipboard(int32_t aWhichClipboard) override;
-    NS_IMETHOD HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList,
-                                      int32_t aWhichClipboard,
-                                      bool* _retval) override;
-    NS_IMETHOD IsClipboardTypeSupported(int32_t aWhichClipboard,
-                                        bool* _retval) override;
-    RefPtr<mozilla::GenericPromise> AsyncGetData(
-        nsITransferable* aTransferable, int32_t aWhichClipboard) override;
-    RefPtr<DataFlavorsPromise> AsyncHasDataMatchingFlavors(
-        const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard) override;
+    mozilla::Result<int32_t, nsresult> GetNativeClipboardSequenceNumber(
+        ClipboardType aWhichClipboard) override;
+
+protected:
+    NS_IMETHOD SetNativeClipboardData(
+        nsITransferable* aTransferable,
+        ClipboardType aWhichClipboard) override;
+    mozilla::Result<nsCOMPtr<nsISupports>, nsresult> GetNativeClipboardData(
+        const nsACString& aFlavor, ClipboardType aWhichClipboard) override;
+    void AsyncGetNativeClipboardData(
+        const nsACString& aFlavor, ClipboardType aWhichClipboard,
+        GetNativeDataCallback&& aCallback) override;
+    nsresult EmptyNativeClipboardData(
+        ClipboardType aWhichClipboard) override;
+    mozilla::Result<bool, nsresult> HasNativeClipboardDataMatchingFlavors(
+        const nsTArray<nsCString>& aFlavorList,
+        ClipboardType aWhichClipboard) override;
 
 private:
     struct PendingAsyncGetData;
 
     virtual ~nsEmbedClipboard();
 
-    NS_IMETHOD SetNativeClipboardData(nsITransferable* aTransferable,
-                                      nsIClipboardOwner* anOwner,
-                                      int32_t aWhichClipboard) override;
     nsresult RequestClipboardData();
     void StopObservingClipboardData();
     void CancelPendingAsyncGetData(nsresult aReason);
     void CompletePendingAsyncGetData(const nsAString& aData);
-    nsresult SetTransferableText(nsITransferable* aTransferable,
-                                 const nsAString& aData);
 
     nsCOMPtr<nsIEmbedAppService> mService;
     nsCOMPtr<nsIObserverService> mObserverService;
     mozilla::UniquePtr<PendingAsyncGetData> mPendingAsyncGetData;
     nsString mBuffer;
+    int32_t mSequenceNumber;
     int mModalDepth;
     bool mWaitingForClipboardData;
     bool mActive;

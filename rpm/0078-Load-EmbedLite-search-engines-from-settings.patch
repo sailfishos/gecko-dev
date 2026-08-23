@@ -1,43 +1,52 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Sat, 16 May 2026 10:20:00 +0200
-Subject: [PATCH 75/75] Load EmbedLite search engines from settings
+Date: Wed, 5 Aug 2026 17:49:59 +0200
+Subject: [sailfishos][search] Initialize application engines
 
-EmbedLite ships search engine definitions as normal profile search settings,
-without Firefox's WebExtension based search engine packages.  The ESR115
-SearchService waits for AddonManager startup before loading engines from the
-selector, which leaves EmbedLite address-bar searches without engines.
+Sailfish uses the toolkit SearchService, but its mobile build was excluded
+from the Remote Settings search dumps along with Android and iOS. Include
+the dumps so application engines and defaults are available during startup.
 
-For the EmbedLite application ID, load engines directly from the persisted
-settings data and tolerate the lack of a WebExtension default engine entry.
+Use the normal selector path for EmbedLite so fresh profiles receive engines
+instead of depending on engines already persisted in the profile. Retain the
+missing application-default guard from the earlier workaround.
+
+Add a focused regression test for the EmbedLite application ID.
 ---
- .../components/search/SearchService.sys.mjs   | 23 +++++++++++++++----
- 1 file changed, 18 insertions(+), 5 deletions(-)
+ services/settings/dumps/main/moz.build        |  9 +++--
+ .../components/search/SearchService.sys.mjs   |  7 ++--
+ .../xpcshell/test_embedlite_config_engines.js | 35 +++++++++++++++++++
+ .../search/tests/xpcshell/xpcshell.toml       |  2 ++
+ 4 files changed, 48 insertions(+), 5 deletions(-)
+ create mode 100644 toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js
 
+diff --git a/services/settings/dumps/main/moz.build b/services/settings/dumps/main/moz.build
+index 2c83ffc7874a..e49763824d34 100644
+--- a/services/settings/dumps/main/moz.build
++++ b/services/settings/dumps/main/moz.build
+@@ -14,9 +14,12 @@ if CONFIG["MOZ_BUILD_APP"] == "browser":
+         "urlbar-persisted-search-terms.json"
+    ]
+ 
+-# These collections are referenced in toolkit/ or other core code, however
+-# Android/iOS don't use/want the dumps.
+-if not CONFIG["MOZ_BUILD_APP"].startswith("mobile/"):
++# These collections are referenced in toolkit/ or other core code. Android/iOS
++# don't use/want the dumps, but Sailfish uses toolkit SearchService.
++if (
++    not CONFIG["MOZ_BUILD_APP"].startswith("mobile/")
++    or CONFIG["MOZ_BUILD_APP"] == "mobile/sailfishos"
++):
+     FINAL_TARGET_FILES.defaults.settings.main += [
+         "anti-tracking-url-decoration.json",
+         "cookie-banner-rules-list.json",
 diff --git a/toolkit/components/search/SearchService.sys.mjs b/toolkit/components/search/SearchService.sys.mjs
-index afd0fff703f8..2a9ed9a8f1ca 100644
+index 2d0f0d1d9b4e..d5250268708c 100644
 --- a/toolkit/components/search/SearchService.sys.mjs
 +++ b/toolkit/components/search/SearchService.sys.mjs
-@@ -1507,11 +1507,13 @@ export class SearchService {
-    *   The engine that is default.
-    */
-   #appDefaultEngine(privateMode = false) {
--    let defaultEngine = this.#getEngineByWebExtensionDetails(
-+    let defaultDetails =
-       privateMode && this.#searchPrivateDefault
-         ? this.#searchPrivateDefault
--        : this._searchDefault
--    );
-+        : this._searchDefault;
-+    let defaultEngine = defaultDetails
-+      ? this.#getEngineByWebExtensionDetails(defaultDetails)
-+      : null;
- 
-     if (Services.policies?.status == Ci.nsIEnterprisePolicies.ACTIVE) {
-       let activePolicies = Services.policies.getActivePolicies();
-@@ -1519,7 +1521,10 @@ export class SearchService {
-         if (activePolicies.SearchEngines.Default) {
-           return this.#getEngineByName(activePolicies.SearchEngines.Default);
+@@ -1847,7 +1847,10 @@ export const SearchService = new (class SearchService {
+             return policyEngine;
+           }
          }
 -        if (activePolicies.SearchEngines.Remove?.includes(defaultEngine.name)) {
 +        if (
@@ -47,19 +56,11 @@ index afd0fff703f8..2a9ed9a8f1ca 100644
            defaultEngine = null;
          }
        }
-@@ -1551,13 +1556,21 @@ export class SearchService {
-    *   An object representing the search engine settings.
+@@ -1881,13 +1884,13 @@ export const SearchService = new (class SearchService {
+    *   The refined search configuration for this user.
     */
-   async #loadEngines(settings) {
+   async #loadEngines(settings, refinedConfig) {
 +    lazy.logConsole.debug("#loadEngines: start");
-+    if (Services.appinfo.ID === "embedliteBrowser@embed.mozilla.org") {
-+      this.#loadEnginesFromSettings(settings?.engines);
-+      this._settings.migrateEngineIds(settings || {});
-+      this.#loadEnginesMetadataFromSettings(settings?.engines);
-+      lazy.logConsole.debug("#loadEngines: done");
-+      return;
-+    }
-+
      // Get user's current settings and search engine before we load engines from
      // config. These values will be compared after engines are loaded.
      let prevMetaData = { ...settings?.metaData };
@@ -67,6 +68,60 @@ index afd0fff703f8..2a9ed9a8f1ca 100644
      let prevAppDefaultEngineId = prevMetaData?.appDefaultEngineId;
  
 -    lazy.logConsole.debug("#loadEngines: start");
-     let { engines, privateDefault } = await this._fetchEngineSelectorEngines();
-     this.#setDefaultAndOrdersFromSelector(engines, privateDefault);
+     this.#setDefaultFromSelector(refinedConfig);
  
+     this.#loadEnginesFromConfig(refinedConfig.engines, settings);
+diff --git a/toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js b/toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js
+new file mode 100644
+index 000000000000..3188859ffb1d
+--- /dev/null
++++ b/toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js
+@@ -0,0 +1,35 @@
++/* Any copyright is dedicated to the Public Domain.
++ * http://creativecommons.org/publicdomain/zero/1.0/ */
++
++"use strict";
++
++const CONFIG = [
++  { identifier: "ddg" },
++  { globalDefault: "ddg" },
++];
++
++add_setup(async function () {
++  updateAppInfo({
++    name: "XULRunner",
++    ID: "embedliteBrowser@embed.mozilla.org",
++    version: "153.1.0",
++    platformVersion: "153.1.0",
++  });
++  SearchTestUtils.setRemoteSettingsConfig(CONFIG);
++});
++
++add_task(async function test_embedlite_loads_configured_engines() {
++  await Promise.all([SearchService.init(), promiseAfterSettings()]);
++
++  const engines = await SearchService.getEngines();
++  Assert.deepEqual(
++    engines.map(engine => engine.id),
++    ["ddg"],
++    "EmbedLite should load engines from the selector configuration"
++  );
++  Assert.equal(
++    SearchService.defaultEngine.id,
++    "ddg",
++    "EmbedLite should use the configured default engine"
++  );
++});
+diff --git a/toolkit/components/search/tests/xpcshell/xpcshell.toml b/toolkit/components/search/tests/xpcshell/xpcshell.toml
+index 0fccbd1143cd..0bbed8c62ee7 100644
+--- a/toolkit/components/search/tests/xpcshell/xpcshell.toml
++++ b/toolkit/components/search/tests/xpcshell/xpcshell.toml
+@@ -54,6 +54,8 @@ support-files = [
+ 
+ ["test_defaultPrivateEngine.js"]
+ 
++["test_embedlite_config_engines.js"]
++
+ ["test_engine_alias.js"]
+ 
+ ["test_engine_has_been_used.js"]

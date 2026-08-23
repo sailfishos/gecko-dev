@@ -1,80 +1,55 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
-Date: Sat, 2 Dec 2023 22:53:02 +0000
+Date: Wed, 5 Aug 2026 11:25:50 +0200
 Subject: [PATCH 36/67] Add and adjust embedlite static prefs
 
-Adds the various embedlite static preferences to StaticPrefList.yaml so
-that these will be availble for use as static pref variables in the C++
-code.
+Generate the EmbedLite APZ preference group required by EmbedLiteViewChild.
 
-[sailfishos][gecko] Set security.external_protocol_requires_permission to default to false
-
-Upstream introduces the new user preference:
-
-security.external_protocol_requires_permission
-
-This defaults to true, but we need it to default to false so that
-external URL actions continue to work as intended. Here we change the
-default value of the preference from true to false so as to allow this.
+Restore the external-protocol permission gate with a secure default.
 ---
- modules/libpref/init/StaticPrefList.yaml      | 23 +++++++++++++++++++
- modules/libpref/init/all.js                   |  2 +-
+ modules/libpref/init/StaticPrefList.yaml      | 22 +++++++++++++++++++
  modules/libpref/moz.build                     |  1 +
- .../handling/ContentDispatchChooser.sys.mjs   |  2 +-
- 4 files changed, 26 insertions(+), 2 deletions(-)
+ .../handling/ContentDispatchChooser.sys.mjs   | 10 +++++++++
+ 3 files changed, 33 insertions(+)
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index eeda4cc25412..13e75da963ac 100644
+index 722d74c6ebef..4b970f52ff0b 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -5075,6 +5075,29 @@
+@@ -6476,6 +6476,28 @@
  #endif
    mirror: always
  
 +#ifdef MOZ_EMBEDLITE
-+  #---------------------------------------------------------------------------
-+  # Prefs starting with "embedlite."
-+  #---------------------------------------------------------------------------
++#---------------------------------------------------------------------------
++# Prefs starting with "embedlite."
++#---------------------------------------------------------------------------
 +
-+# Default azpc notifications behavior
-+-   name: embedlite.azpc.handle.viewport
-+    type: bool
-+    value: true
-+    mirror: always
++- name: embedlite.azpc.handle.viewport
++  type: bool
++  value: true
++  mirror: always
 +
-+-   name: embedlite.azpc.handle.singletap
-+    type: bool
-+    value: true
-+    mirror: always
++- name: embedlite.azpc.handle.singletap
++  type: bool
++  value: true
++  mirror: always
 +
-+-   name: embedlite.azpc.handle.longtap
-+    type: bool
-+    value: true
-+    mirror: always
++- name: embedlite.azpc.handle.longtap
++  type: bool
++  value: true
++  mirror: always
 +
 +#endif
 +
  #---------------------------------------------------------------------------
  # Prefs starting with "extensions."
  #---------------------------------------------------------------------------
-diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
-index 3f860aa32061..ae7ddd934dc7 100644
---- a/modules/libpref/init/all.js
-+++ b/modules/libpref/init/all.js
-@@ -4127,7 +4127,7 @@ pref("dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled", false
- // Whether sites require the open-protocol-handler permission to open a
- //preferred external application for a protocol. If a site doesn't have
- // permission we will show a prompt.
--pref("security.external_protocol_requires_permission", true);
-+pref("security.external_protocol_requires_permission", false);
- 
- // Preferences for the form autofill toolkit component.
- // The truthy values of "extensions.formautofill.addresses.available"
 diff --git a/modules/libpref/moz.build b/modules/libpref/moz.build
-index e8f8b97170d3..a1175f7d0528 100644
+index fa05921295e8..367f2e841277 100644
 --- a/modules/libpref/moz.build
 +++ b/modules/libpref/moz.build
-@@ -45,6 +45,7 @@ pref_groups = [
+@@ -42,6 +42,7 @@ pref_groups = [
      "docshell",
      "dom",
      "editor",
@@ -83,13 +58,30 @@ index e8f8b97170d3..a1175f7d0528 100644
      "fission",
      "font",
 diff --git a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
-index cf9a2444a3ab..e980e0e2e604 100644
+index 8d89744fc8d9..21be36db7f43 100644
 --- a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
 +++ b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
-@@ -446,5 +446,5 @@ XPCOMUtils.defineLazyPreferenceGetter(
-   nsContentDispatchChooser,
-   "isPermissionEnabled",
-   "security.external_protocol_requires_permission",
--  true
-+  false
+@@ -20,6 +20,12 @@ XPCOMUtils.defineLazyPreferenceGetter(
+   "network.protocol-handler.prompt-from-external",
+   true
  );
++XPCOMUtils.defineLazyPreferenceGetter(
++  gPrefs,
++  "requireExternalProtocolPermission",
++  "security.external_protocol_requires_permission",
++  true
++);
+ 
+ const PROTOCOL_HANDLER_OPEN_PERM_KEY = "open-protocol-handler";
+ const PERMISSION_KEY_DELIMITER = "^";
+@@ -290,6 +296,10 @@ export class nsContentDispatchChooser {
+     aTriggeredExternally,
+     isStandardProtocol
+   ) {
++    if (!gPrefs.requireExternalProtocolPermission) {
++      return true;
++    }
++
+     // If a handler is set to open externally by default we skip the dialog.
+     const { type, hasDefaultHandler, preferredApplicationHandler } = aHandler;
+ 

@@ -36,8 +36,8 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/PContent.h"
+#include "mozilla/ipc/ProcessChild.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
@@ -64,7 +64,8 @@ EmbedLiteAppProcessChild::~EmbedLiteAppProcessChild()
 
 bool
 EmbedLiteAppProcessChild::Init(base::ProcessId aParentPid,
-                               mozilla::ipc::UntypedEndpoint&& aEndpoint)
+                               mozilla::ipc::UntypedEndpoint&& aEndpoint,
+                               const char* aParentBuildID)
 {
   (void)aParentPid;
 
@@ -113,6 +114,12 @@ EmbedLiteAppProcessChild::Init(base::ProcessId aParentPid,
     return false;
   }
 
+  GetIPCChannel()->SetAbortOnError(true);
+  MessageChannel* channel = GetIPCChannel();
+  if (channel && !channel->SendBuildIDsMatchMessage(aParentBuildID)) {
+    ProcessChild::QuickExit();
+  }
+
   return true;
 }
 
@@ -148,17 +155,10 @@ EmbedLiteAppProcessChild::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("shutting down early because of crash!");
-    QuickExit();
+    ProcessChild::QuickExit();
   }
 
   XRE_ShutdownChildProcess();
-}
-
-void
-EmbedLiteAppProcessChild::QuickExit()
-{
-    NS_WARNING("content process _exit()ing");
-    _exit(0);
 }
 
 PEmbedLiteViewChild*
@@ -192,8 +192,17 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
 }
 
 PEmbedLiteWindowChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
+EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    const uintptr_t &aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
 {
+  Unused << width;
+  Unused << height;
+  Unused << id;
+  Unused << aListener;
+  Unused << chromeHosted;
+  Unused << initialContentURI;
   LOGNI();
   return nullptr;
 }

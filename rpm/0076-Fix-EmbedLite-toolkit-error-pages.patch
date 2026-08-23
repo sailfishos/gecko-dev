@@ -1,49 +1,48 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Mon, 11 May 2026 21:00:00 +0200
-Subject: [PATCH 72/72] Fix EmbedLite toolkit error pages
+Date: Wed, 5 Aug 2026 17:48:03 +0200
+Subject: Fix EmbedLite toolkit error pages
 
-EmbedLite starts Gecko through the embedding glue rather than XRE_main, so make
-the toolkit startup service import the actor manager when the app-startup
-category is run by the embedder.
-
-The network error page also needs to avoid Firefox chrome resources that are
-not packaged in EmbedLite, reload through the browsing context when there is no
-browser element, include a mobile viewport, and ship the toolkit Fluent brand
-strings used by the remote error document.
-
-Initialize certificate error actions before optional certificate details so a
-failure in embedder-specific detail collection cannot leave the page without
-navigation or certificate override controls.
+Bootstrap remote-page actors through EmbedLite startup and make network
+error navigation work without a browser element. Ship the mobile viewport
+and toolkit branding used by the error document.
 ---
- toolkit/actors/NetErrorChild.sys.mjs          |  8 +---
- toolkit/actors/NetErrorParent.sys.mjs         | 48 ++++++++++++++-----
+ toolkit/actors/NetErrorChild.sys.mjs          |  9 ++-
+ toolkit/actors/NetErrorParent.sys.mjs         | 58 ++++++++++++++-----
  .../MainProcessSingleton.sys.mjs              |  5 ++
+ .../ProcessSingleton.manifest                 |  1 +
+ toolkit/content/aboutNetError.html            |  1 +
  toolkit/content/aboutNetError.mjs             |  5 +-
- toolkit/content/aboutNetError.xhtml           |  1 +
- .../locales/en-US/chrome/branding/brand.ftl   |  9 ++++
+ .../locales/en-US/chrome/branding/brand.ftl   |  9 +++
  toolkit/locales/jar.mn                        |  1 +
- 7 files changed, 58 insertions(+), 19 deletions(-)
+ 8 files changed, 72 insertions(+), 17 deletions(-)
  create mode 100644 toolkit/locales/en-US/chrome/branding/brand.ftl
 
 diff --git a/toolkit/actors/NetErrorChild.sys.mjs b/toolkit/actors/NetErrorChild.sys.mjs
-index 671eb22baa56..30a3181b5490 100644
+index 433649097390..d00ef25b1ebd 100644
 --- a/toolkit/actors/NetErrorChild.sys.mjs
 +++ b/toolkit/actors/NetErrorChild.sys.mjs
-@@ -3,11 +3,7 @@
+@@ -2,15 +2,18 @@
   * License, v. 2.0. If a copy of the MPL was not distributed with this
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
--const lazy = {};
--
--ChromeUtils.defineESModuleGetters(lazy, {
++import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
++
+ const lazy = {};
+ 
+ ChromeUtils.defineESModuleGetters(lazy, {
 -  AppInfo: "chrome://remote/content/shared/AppInfo.sys.mjs",
--});
-+const FIREFOX_ID = "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
+   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
+ });
  
  import { RemotePageChild } from "resource://gre/actors/RemotePageChild.sys.mjs";
  
-@@ -173,7 +169,7 @@ export class NetErrorChild extends RemotePageChild {
++const FIREFOX_ID = "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
++
+ export class NetErrorChild extends RemotePageChild {
+   actorCreated() {
+     super.actorCreated();
+@@ -201,7 +204,7 @@ export class NetErrorChild extends RemotePageChild {
    }
  
    RPMIsFirefox() {
@@ -51,12 +50,52 @@ index 671eb22baa56..30a3181b5490 100644
 +    return Services.appinfo.ID == FIREFOX_ID;
    }
  
-   _getTRRSkipReason() {
+   RPMHasConnectivity() {
+@@ -242,7 +245,7 @@ export class NetErrorChild extends RemotePageChild {
+   }
+ 
+   RPMShowOSXLocalNetworkPermissionWarning() {
+-    if (!lazy.AppInfo.isMac) {
++    if (AppConstants.platform != "macosx") {
+       return false;
+     }
+ 
 diff --git a/toolkit/actors/NetErrorParent.sys.mjs b/toolkit/actors/NetErrorParent.sys.mjs
-index 7d1f0f3f0fae..f29fc8d68296 100644
+index 0ed7b63c280c..cccd56aa74a1 100644
 --- a/toolkit/actors/NetErrorParent.sys.mjs
 +++ b/toolkit/actors/NetErrorParent.sys.mjs
-@@ -66,6 +66,16 @@ export class NetErrorParent extends JSWindowActorParent {
+@@ -51,21 +51,26 @@ export class EscapablePageParent extends JSWindowActorParent {
+    * that has certificate errors, we can get them somewhere safe.
+    */
+   leaveErrorPage(browser, allowGoingBack = true) {
+-    if (!browser.canGoBack || !allowGoingBack) {
++    let webNavigation = browser || this.browsingContext.top;
++    let canGoBack = browser
++      ? browser.canGoBack
++      : webNavigation.sessionHistory?.index > 0;
++
++    if (!canGoBack || !allowGoingBack) {
+       // If the unsafe page is the first or the only one in history, we need to
+       // go somewhere:
+       let safePage = "about:blank";
+ 
+       // Ideally we use the homepage...
+-      if (AppConstants.MOZ_BUILD_APP == "browser") {
++      if (AppConstants.MOZ_BUILD_APP == "browser" && browser) {
+         safePage = lazy.HomePage.getForErrorPage(browser.documentGlobal);
+       }
+-      browser.fixupAndLoadURIString(safePage, {
++      webNavigation.fixupAndLoadURIString(safePage, {
+         triggeringPrincipal:
+           Services.scriptSecurityManager.getSystemPrincipal(),
+       });
+     } else {
+-      browser.goBack();
++      webNavigation.goBack();
+     }
+   }
+ }
+@@ -86,6 +91,23 @@ export class NetErrorParent extends EscapablePageParent {
      return this.browsingContext.top.embedderElement;
    }
  
@@ -70,43 +109,56 @@ index 7d1f0f3f0fae..f29fc8d68296 100644
 +    this.browsingContext.top.reload(Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
 +  }
 +
++  isShowingCertErrorPage(browser) {
++    let documentURI =
++      browser?.documentURI ??
++      this.browsingContext.top.currentWindowGlobal?.documentURI;
++    return documentURI?.spec.startsWith("about:certerror");
++  }
++
    hasChangedCertPrefs() {
      let prefSSLImpact = PREF_SSL_IMPACT_ROOTS.reduce((prefs, root) => {
        return prefs.concat(Services.prefs.getChildList(root));
-@@ -143,18 +153,23 @@ export class NetErrorParent extends JSWindowActorParent {
-    * that has certificate errors, we can get them somewhere safe.
-    */
-   goBackFromErrorPage(browser) {
--    if (!browser.canGoBack) {
-+    let webNavigation = browser || this.browsingContext.top;
-+    let canGoBack = browser
-+      ? browser.canGoBack
-+      : webNavigation.sessionHistory?.index > 0;
-+
-+    if (!canGoBack) {
-       // If the unsafe page is the first or the only one in history, go to the
-       // start page.
--      browser.fixupAndLoadURIString(
--        this.getDefaultHomePage(browser.ownerGlobal),
--        {
--          triggeringPrincipal:
--            Services.scriptSecurityManager.getSystemPrincipal(),
--        }
--      );
-+      let defaultPage = browser
-+        ? this.getDefaultHomePage(browser.ownerGlobal)
-+        : "about:blank";
-+      webNavigation.fixupAndLoadURIString(defaultPage, {
-+        triggeringPrincipal:
-+          Services.scriptSecurityManager.getSystemPrincipal(),
-+      });
-     } else {
--      browser.goBack();
-+      webNavigation.goBack();
-     }
-   }
+@@ -120,7 +142,7 @@ export class NetErrorParent extends EscapablePageParent {
  
-@@ -259,7 +274,7 @@ export class NetErrorParent extends JSWindowActorParent {
+     request.addEventListener("error", () => {
+       // Make sure the user is still on the cert error page.
+-      if (!browser.documentURI.spec.startsWith("about:certerror")) {
++      if (!this.isShowingCertErrorPage(browser)) {
+         return;
+       }
+ 
+@@ -153,8 +175,8 @@ export class NetErrorParent extends EscapablePageParent {
+             lazy.BrowserUtils.promiseObserved(
+               "psm:enterprise-certs-imported"
+             ).then(() => {
+-              if (browser.documentURI.spec.startsWith("about:certerror")) {
+-                browser.reload();
++              if (this.isShowingCertErrorPage(browser)) {
++                this.reloadErrorPage();
+               }
+             });
+ 
+@@ -170,7 +192,7 @@ export class NetErrorParent extends EscapablePageParent {
+           }
+         } else {
+           // Need to reload the page to make sure network code picks up the canary issuer pref.
+-          browser.reload();
++          this.reloadErrorPage();
+         }
+       }
+     });
+@@ -190,7 +212,8 @@ export class NetErrorParent extends EscapablePageParent {
+     let offlinePagePath = `chrome://global/content/neterror/supportpages/${supportPageSlug}.html`;
+     let triggeringPrincipal =
+       Services.scriptSecurityManager.getSystemPrincipal();
+-    this.browser.loadURI(Services.io.newURI(offlinePagePath), {
++    let webNavigation = this.browser || this.browsingContext.top;
++    webNavigation.loadURI(Services.io.newURI(offlinePagePath), {
+       triggeringPrincipal,
+     });
+   }
+@@ -200,10 +223,10 @@ export class NetErrorParent extends EscapablePageParent {
        case "Browser:EnableOnlineMode":
          // Reset network state and refresh the page.
          Services.io.offline = false;
@@ -114,21 +166,25 @@ index 7d1f0f3f0fae..f29fc8d68296 100644
 +        this.reloadErrorPage();
          break;
        case "Browser:OpenCaptivePortalPage":
-         this.browser.ownerGlobal.CaptivePortalWatcher.ensureCaptivePortalTab();
-@@ -278,7 +293,7 @@ export class NetErrorParent extends JSWindowActorParent {
+-        this.browser.documentGlobal.CaptivePortalWatcher.ensureCaptivePortalTab();
++        this.browser?.documentGlobal.CaptivePortalWatcher?.ensureCaptivePortalTab();
+         break;
+       case "Browser:PrimeMitm":
+         this.primeMitm(this.browser);
+@@ -219,7 +242,7 @@ export class NetErrorParent extends EscapablePageParent {
          for (let prefName of prefSSLImpact) {
            Services.prefs.clearUserPref(prefName);
          }
 -        this.browser.reload();
 +        this.reloadErrorPage();
          break;
+       }
        case "Browser:SSLErrorGoBack":
-         this.goBackFromErrorPage(this.browser);
-@@ -318,7 +333,16 @@ export class NetErrorParent extends JSWindowActorParent {
+@@ -245,7 +268,16 @@ export class NetErrorParent extends EscapablePageParent {
              certsStringURL = certsStringURL.join("&");
              let url = `about:certificate?${certsStringURL}`;
  
--            let window = this.browser.ownerGlobal;
+-            let window = this.browser.documentGlobal;
 +            let browser = this.browser;
 +            if (!browser) {
 +              this.browsingContext.top.loadURI(Services.io.newURI(url), {
@@ -138,19 +194,19 @@ index 7d1f0f3f0fae..f29fc8d68296 100644
 +              break;
 +            }
 +
-+            let window = browser.ownerGlobal;
++            let window = browser.documentGlobal;
              if (AppConstants.MOZ_BUILD_APP === "browser") {
                window.switchToTabHavingURI(url, true, {});
              } else {
 diff --git a/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs b/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs
-index a10493f79b6b..738c68fcd275 100644
+index 2c93bcdc65be..5ff05af64619 100644
 --- a/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs
 +++ b/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs
 @@ -13,6 +13,11 @@ MainProcessSingleton.prototype = {
-   observe(subject, topic, data) {
+   observe(subject, topic) {
      switch (topic) {
        case "app-startup": {
-+        // Imported for side effects.
++        // Imported for side-effects.
 +        ChromeUtils.importESModule(
 +          "resource://gre/modules/ActorManagerParent.sys.mjs"
 +        );
@@ -158,11 +214,30 @@ index a10493f79b6b..738c68fcd275 100644
          // Imported for side-effects.
          ChromeUtils.importESModule(
            "resource://gre/modules/CustomElementsListener.sys.mjs"
+diff --git a/toolkit/components/processsingleton/ProcessSingleton.manifest b/toolkit/components/processsingleton/ProcessSingleton.manifest
+index dffe6abcc586..635979e062cb 100644
+--- a/toolkit/components/processsingleton/ProcessSingleton.manifest
++++ b/toolkit/components/processsingleton/ProcessSingleton.manifest
+@@ -1 +1,2 @@
+ category app-startup MainProcessSingleton @mozilla.org/main-process-singleton;1 process=main
++category embedlite-startup MainProcessSingleton @mozilla.org/main-process-singleton;1 process=main
+diff --git a/toolkit/content/aboutNetError.html b/toolkit/content/aboutNetError.html
+index b14ca3bbe547..15c7031c5773 100644
+--- a/toolkit/content/aboutNetError.html
++++ b/toolkit/content/aboutNetError.html
+@@ -8,6 +8,7 @@
+       http-equiv="Content-Security-Policy"
+       content="default-src chrome:; object-src 'none'"
+     />
++    <meta name="viewport" content="width=device-width, initial-scale=1" />
+     <meta name="color-scheme" content="light dark" />
+     <title data-l10n-id="neterror-page-title"></title>
+     <link
 diff --git a/toolkit/content/aboutNetError.mjs b/toolkit/content/aboutNetError.mjs
-index 943cf62244a3..4b1dbcbcb290 100644
+index 728a08f20d54..ab723b158665 100644
 --- a/toolkit/content/aboutNetError.mjs
 +++ b/toolkit/content/aboutNetError.mjs
-@@ -325,6 +325,10 @@ function initPage() {
+@@ -423,6 +423,10 @@ function initPage() {
    const shortDesc = document.getElementById("errorShortDesc");
  
    if (gIsCertError) {
@@ -170,10 +245,10 @@ index 943cf62244a3..4b1dbcbcb290 100644
 +    // even if collecting optional certificate details fails in an embedder.
 +    initCertErrorPageActions();
 +
+     const bodyTitle = document.querySelector(".title-text");
      const isStsError = window !== window.top || gHasSts;
      const errArgs = { hostname: HOST_NAME };
-     if (isCaptive()) {
-@@ -352,7 +356,6 @@ function initPage() {
+@@ -451,7 +455,6 @@ function initPage() {
        initPageCertError();
      }
  
@@ -181,18 +256,6 @@ index 943cf62244a3..4b1dbcbcb290 100644
      setTechnicalDetailsOnCertError();
      return;
    }
-diff --git a/toolkit/content/aboutNetError.xhtml b/toolkit/content/aboutNetError.xhtml
-index 44bc72cecfbf..d0bc96f4d074 100644
---- a/toolkit/content/aboutNetError.xhtml
-+++ b/toolkit/content/aboutNetError.xhtml
-@@ -9,6 +9,7 @@
- <html xmlns="http://www.w3.org/1999/xhtml" data-l10n-sync="true">
-   <head>
-     <meta http-equiv="Content-Security-Policy" content="default-src chrome:; object-src 'none'" />
-+    <meta name="viewport" content="width=device-width, initial-scale=1" />
-     <meta name="color-scheme" content="light dark" />
-     <title data-l10n-id="neterror-page-title"></title>
-     <link rel="stylesheet" href="chrome://global/skin/aboutNetError.css" type="text/css" media="all" />
 diff --git a/toolkit/locales/en-US/chrome/branding/brand.ftl b/toolkit/locales/en-US/chrome/branding/brand.ftl
 new file mode 100644
 index 000000000000..083dda8cf853
@@ -209,7 +272,7 @@ index 000000000000..083dda8cf853
 +-brand-product-name = Sailfish Browser
 +-vendor-short-name = Jolla
 diff --git a/toolkit/locales/jar.mn b/toolkit/locales/jar.mn
-index 1f2189fd35f8..37ab0698ad62 100644
+index 480dbd7db798..5d631c1a6f69 100644
 --- a/toolkit/locales/jar.mn
 +++ b/toolkit/locales/jar.mn
 @@ -4,6 +4,7 @@

@@ -21,10 +21,10 @@ needs to be parsed by the moc tool during the QtMozEmbed build.
  1 file changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/mfbt/MaybeStorageBase.h b/mfbt/MaybeStorageBase.h
-index 2732d78d0539..6a091a972724 100644
+index dc4a9bbad62d..5f61f07829bb 100644
 --- a/mfbt/MaybeStorageBase.h
 +++ b/mfbt/MaybeStorageBase.h
-@@ -13,7 +13,8 @@
+@@ -11,7 +11,8 @@
  #include <type_traits>
  #include <utility>
  
@@ -34,7 +34,7 @@ index 2732d78d0539..6a091a972724 100644
  
  template <typename T>
  constexpr bool IsTriviallyDestructibleAndCopyable =
-@@ -87,6 +88,7 @@ struct MaybeStorageBase<T, true> {
+@@ -86,6 +87,7 @@ struct MaybeStorageBase<T, true> {
    constexpr T* addr() { return &mStorage.val; }
  };
  

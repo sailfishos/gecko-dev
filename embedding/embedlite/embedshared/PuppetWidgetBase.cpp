@@ -8,6 +8,7 @@
 #include "EmbedLog.h"
 #include "PuppetWidgetBase.h"
 
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 
 #include "WindowRenderer.h"
@@ -31,38 +32,36 @@ PuppetWidgetBase::PuppetWidgetBase()
   , mVisible(false)
   , mEnabled(false)
   , mActive(false)
-  , mParent(nullptr)
   , mRotation(mozilla::ROTATION_0)
   , mMargins(0, 0, 0, 0)
   , mSafeAreaInsets(0, 0, 0, 0)
   , mSizeMode(nsSizeMode_Normal)
 
 {
-
 }
 
 nsresult
-PuppetWidgetBase::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutDeviceIntRect &aRect, widget::InitData *aInitData)
+PuppetWidgetBase::Create(nsIWidget *aParent, const LayoutDeviceIntRect &aRect,
+                         widget::InitData *aInitData)
 {
   LOGT("Puppet: %p, parent: %p", this, aParent);
 
-  NS_ASSERTION(!aNativeParent, "got a non-Puppet native parent");
-
-  mParent = static_cast<PuppetWidgetBase*>(aParent);
+  PuppetWidgetBase* parent = dynamic_cast<PuppetWidgetBase*>(aParent);
 
   mEnabled = true;
-  mVisible = mParent ? mParent->mVisible : true;
+  mVisible = parent ? parent->mVisible : true;
 
-  if (mParent) {
-    mParent->mChildren.AppendElement(this);
-  }
-  mRotation = mParent ? mParent->mRotation : mRotation;
-  mBounds = mParent ? mParent->mBounds : aRect;
-  mMargins = mParent ? mParent->mMargins : mMargins;
-  mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect;
-  mSafeAreaInsets = mParent ? mParent->mSafeAreaInsets : mSafeAreaInsets;
+  mRotation = parent ? parent->mRotation : mRotation;
+  mBounds = parent ? parent->mBounds : aRect;
+  mMargins = parent ? parent->mMargins : mMargins;
+  mNaturalBounds = parent ? parent->mNaturalBounds : aRect;
+  mSafeAreaInsets = parent ? parent->mSafeAreaInsets : mSafeAreaInsets;
 
   BaseCreate(aParent, aInitData);
+
+  if (parent) {
+    parent->mChildren.AppendElement(this);
+  }
 
   if (IsTopLevel()) {
     LOGT("Append this to toplevel windows:%p", this);
@@ -80,21 +79,21 @@ PuppetWidgetBase::Destroy()
     return;
   }
 
+  mWidgetPaintTask.Revoke();
   mOnDestroyCalled = true;
+
+  PuppetWidgetBase* parent =
+    dynamic_cast<PuppetWidgetBase*>(GetParent());
 
   Base::OnDestroy();
   Base::Destroy();
 
-  while (mChildren.Length()) {
-    mChildren[0]->SetParent(nullptr);
-  }
+  MOZ_ASSERT(mChildren.IsEmpty());
   mChildren.Clear();
 
-  if (mParent) {
-    mParent->mChildren.RemoveElement(this);
+  if (parent) {
+    parent->mChildren.RemoveElement(this);
   }
-
-  mParent = nullptr;
 
 #if DEBUG
   DumpWidgetTree();
@@ -239,62 +238,60 @@ PuppetWidgetBase::WidgetToScreenOffset()
 void
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
-  Unused << aRect;
-  if (Destroyed()) {
-    return;
-  }
-  WindowRenderer* rendered = GetWindowRenderer();
-  if (!rendered) {
+  if (Destroyed() || aRect.IsEmpty() || !GetWindowRenderer() ||
+      mWidgetPaintTask.IsPending()) {
     return;
   }
 
-  nsIWidgetListener* listener = GetWidgetListener();
+  mWidgetPaintTask = new WidgetPaintTask(this);
+  nsCOMPtr<nsIRunnable> event(mWidgetPaintTask.get());
+  if (NS_FAILED(SchedulerGroup::Dispatch(event.forget()))) {
+    mWidgetPaintTask.Revoke();
+  }
+}
+
+NS_IMETHODIMP
+PuppetWidgetBase::WidgetPaintTask::Run()
+{
+  if (mWidget) {
+    mWidget->Paint();
+  }
+  return NS_OK;
+}
+
+void
+PuppetWidgetBase::Paint()
+{
+  mWidgetPaintTask.Revoke();
+
+  if (Destroyed() || !GetWindowRenderer()) {
+    return;
+  }
+
+  RefPtr<PuppetWidgetBase> strongThis(this);
+
+  nsIWidgetListener* listener =
+    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (listener) {
     listener->WillPaintWindow(this);
   }
 
-  listener = GetWidgetListener();
+  if (Destroyed()) {
+    return;
+  }
+
+  // WillPaintWindow may run script and change the attached listener.
+  listener =
+    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (listener) {
     listener->DidPaintWindow();
   }
 }
 
 void
-PuppetWidgetBase::SetParent(nsIWidget *aNewParent)
-{
-  LOGT();
-  if (mParent == static_cast<PuppetWidgetBase*>(aNewParent)) {
-    return;
-  }
-
-  if (mParent) {
-    mParent->mChildren.RemoveElement(this);
-  }
-
-  mParent = static_cast<PuppetWidgetBase*>(aNewParent);
-
-  if (mParent) {
-    mParent->mChildren.AppendElement(this);
-  }
-}
-
-nsIWidget*
-PuppetWidgetBase::GetParent(void)
-{
-  return mParent;
-}
-
-void
 PuppetWidgetBase::CaptureRollupEvents(bool aDoCapture)
 {
   (void)aDoCapture;
-  LOGNI();
-}
-
-void
-PuppetWidgetBase::ReparentNativeWidget(nsIWidget *aNewParent)
-{
-  Unused << aNewParent;
   LOGNI();
 }
 
@@ -327,14 +324,15 @@ PuppetWidgetBase::SetMargins(const LayoutDeviceIntMargin &margins)
   }
 }
 
-ScreenIntMargin
+LayoutDeviceIntMargin
 PuppetWidgetBase::GetSafeAreaInsets() const
 {
   return mSafeAreaInsets;
 }
 
 void
-PuppetWidgetBase::SetSafeAreaInsets(const ScreenIntMargin &aSafeAreaInsets)
+PuppetWidgetBase::SetSafeAreaInsets(
+    const LayoutDeviceIntMargin &aSafeAreaInsets)
 {
   if (mSafeAreaInsets == aSafeAreaInsets) {
     return;
@@ -354,6 +352,15 @@ PuppetWidgetBase::SetSafeAreaInsets(const ScreenIntMargin &aSafeAreaInsets)
 }
 
 void
+PuppetWidgetBase::DidClearParent(nsIWidget* aOldParent)
+{
+  if (PuppetWidgetBase* parent =
+        dynamic_cast<PuppetWidgetBase*>(aOldParent)) {
+    parent->mChildren.RemoveElement(this);
+  }
+}
+
+void
 PuppetWidgetBase::SetSize(double aWidth, double aHeight) {
   LayoutDeviceIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
@@ -368,19 +375,29 @@ PuppetWidgetBase::SetSize(double aWidth, double aHeight) {
 void
 PuppetWidgetBase::UpdateBounds(bool aRepaint)
 {
+  const LayoutDeviceIntCoord zero(0);
   int aWidth = 0;
   int aHeight = 0;
 
   if (mRotation == mozilla::ROTATION_0 || mRotation == mozilla::ROTATION_180) {
-    aWidth = std::max(0, (mNaturalBounds.width - std::max(0, mMargins.left) - std::max(0, mMargins.right)));
-    aHeight = std::max(0, (mNaturalBounds.height - std::max(0, mMargins.top) - std::max(0, mMargins.bottom)));
+    aWidth = std::max(0, mNaturalBounds.width -
+                         std::max(zero, mMargins.left) -
+                         std::max(zero, mMargins.right));
+    aHeight = std::max(0, mNaturalBounds.height -
+                          std::max(zero, mMargins.top) -
+                          std::max(zero, mMargins.bottom));
   } else {
-    aWidth = std::max(0, (mNaturalBounds.height - std::max(0, mMargins.left) - std::max(0, mMargins.right)));
-    aHeight = std::max(0, (mNaturalBounds.width - std::max(0, mMargins.top) - std::max(0, mMargins.bottom)));
+    aWidth = std::max(0, mNaturalBounds.height -
+                         std::max(zero, mMargins.left) -
+                         std::max(zero, mMargins.right));
+    aHeight = std::max(0, mNaturalBounds.width -
+                          std::max(zero, mMargins.top) -
+                          std::max(zero, mMargins.bottom));
   }
 
   LayoutDeviceIntRect oldBounds = mBounds;
-  LOGT("sz[%i,%i]->[%i,%i]", oldBounds.width, oldBounds.height, aWidth, aHeight);
+  LOGT("sz[%i,%i]->[%i,%i]", oldBounds.width, oldBounds.height,
+       aWidth, aHeight);
 
   mBounds.y = 0;
   mBounds.x = 0;
@@ -450,9 +467,9 @@ void PuppetWidgetBase::LogWidget(PuppetWidgetBase *widget, int index, int indent
                 spaces, index, widget, widget->Type(),
                 widget->mBounds.x, widget->mBounds.y,
                 widget->mBounds.width, widget->mBounds.height,
-                widget->mMargins.top, widget->mMargins.right,
-                widget->mMargins.bottom, widget->mMargins.left,
-                widget->mVisible, widget->mWindowType,
+                widget->mMargins.top.value, widget->mMargins.right.value,
+                widget->mMargins.bottom.value, widget->mMargins.left.value,
+                widget->mVisible, static_cast<int>(widget->mWindowType),
                 widget->mRotation * 90, widget->mObservers.Length());
 }
 

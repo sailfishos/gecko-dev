@@ -22,6 +22,7 @@
 #include "mozilla/WidgetUtils.h"
 #include "PuppetWidgetBase.h"
 #include "nsCOMArray.h"
+#include "nsCOMPtr.h"
 #include "nsRect.h"
 
 namespace mozilla {
@@ -35,12 +36,14 @@ class EmbedLitePuppetWidget : public PuppetWidgetBase
 public:
   EmbedLitePuppetWidget(EmbedLiteViewChildIface* view);
 
+  static already_AddRefed<nsIWidget> CreateForChromeHost(nsIWidget* aHost);
+
   NS_DECL_ISUPPORTS_INHERITED
 
-  virtual already_AddRefed<nsIWidget>
-  CreateChild(const LayoutDeviceIntRect&  aRect,
-              widget::InitData* aInitData = nullptr,
-              bool              aForceUseIWidgetParent = false) override;
+  using PuppetWidgetBase::Create;
+  [[nodiscard]] nsresult Create(nsIWidget* aParent,
+                                const LayoutDeviceIntRect& aRect,
+                                widget::InitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
 
@@ -80,9 +83,12 @@ public:
 
   void AddObserver(EmbedLitePuppetWidgetObserver *aObserver);
   void RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver);
+  void NotifyChromeWindowFocusChanged(bool aFocused);
 
 protected:
   virtual ~EmbedLitePuppetWidget() override;
+  already_AddRefed<nsIWidget> AllocateChildPuppetWidget(
+      widget::InitData& aInitData) override;
   EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
   virtual void ConfigureAPZCTreeManager();
@@ -97,6 +103,7 @@ private:
   EmbedLitePuppetWidget *GetParentPuppetWidget() const;
 
   EmbedLiteViewChildIface* mView; // Not owned, can be null.
+  nsCOMPtr<nsIWidget> mPendingChromeHost;
 
   InputContext mInputContext;
   NativeIMEContext mNativeIMEContext;

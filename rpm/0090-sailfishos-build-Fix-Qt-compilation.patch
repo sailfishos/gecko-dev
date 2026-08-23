@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 12:52:11 +0200
+Subject: [sailfishos][build] Fix Qt compilation
+
+Configure GLib for Qt builds so Linux gamepad sources receive the
+required include paths. Keep GTK D-Bus location providers out of Qt
+geolocation builds.
+---
+ dom/geolocation/Geolocation.cpp | 2 +-
+ toolkit/moz.configure           | 6 ++++--
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
+index bb4c764ea6e8..33807fb68a21 100644
+--- a/dom/geolocation/Geolocation.cpp
++++ b/dom/geolocation/Geolocation.cpp
+@@ -47,7 +47,7 @@ class nsIPrincipal;
+ #  include "AndroidLocationProvider.h"
+ #endif
+ 
+-#ifdef MOZ_ENABLE_DBUS
++#if defined(MOZ_WIDGET_GTK) && defined(MOZ_ENABLE_DBUS)
+ #  include "GeoclueLocationProvider.h"
+ #  include "PortalLocationProvider.h"
+ #  include "mozilla/WidgetUtilsGtk.h"
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 8ce1723015fe..5431a572b681 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -3616,13 +3616,15 @@ with only_when(toolkit_gtk):
+     set_define("GDK_VERSION_MIN_REQUIRED", "GDK_VERSION_3_14")
+     set_define("GDK_VERSION_MAX_ALLOWED", "GDK_VERSION_3_14")
+ 
++    set_define("MOZ_ACCESSIBILITY_ATK", True, when=accessibility)
++
++
++with only_when(toolkit_gtk | toolkit_qt):
+     pkg_check_modules("GLIB", "glib-2.0 >= 2.42 gobject-2.0")
+ 
+     set_define("GLIB_VERSION_MIN_REQUIRED", "GLIB_VERSION_2_42")
+     set_define("GLIB_VERSION_MAX_ALLOWED", "GLIB_VERSION_2_42")
+ 
+-    set_define("MOZ_ACCESSIBILITY_ATK", True, when=accessibility)
+-
+ # DBus
+ # ==============================================================
+ with only_when(toolkit_gtk | toolkit_qt):

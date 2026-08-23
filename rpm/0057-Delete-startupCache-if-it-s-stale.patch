@@ -3,149 +3,78 @@ From: David Llewellyn-Jones <david@flypig.co.uk>
 Date: Tue, 28 Jul 2020 09:39:16 +0000
 Subject: [PATCH 57/67] Delete startupCache if it's stale
 
-Adds functionality to the StartupCache initialisation code to delete the
-startupCache if it's older than the timestamp on
-/var/lib/_MOZEMBED_CACHE_CLEAN_ .
+Sailfish packages touch /var/lib/_MOZEMBED_CACHE_CLEAN_ after upgrades.
+Remove an older startup cache before Gecko loads it.
 
-This _MOZEMBED_CACHE_CLEAN_ should be touched whenever the packages are
-updated to ensure the process works correctly.
+Use ESR140's resolved cache path instead of enumerating an arbitrary file in
+the cache directory. For the default path, clear and recreate the complete
+startupCache directory so related caches cannot remain stale.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- startupcache/StartupCache.cpp | 96 +++++++++++++++++++++++++++++++++++
- 1 file changed, 96 insertions(+)
+ startupcache/StartupCache.cpp | 45 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
 
 diff --git a/startupcache/StartupCache.cpp b/startupcache/StartupCache.cpp
-index 5c6e97b326bd..05bc0e69eec8 100644
+index 2c69ad24b057..ecc3de19e624 100644
 --- a/startupcache/StartupCache.cpp
 +++ b/startupcache/StartupCache.cpp
-@@ -15,12 +15,14 @@
- #include "mozilla/ResultExtensions.h"
- #include "mozilla/scache/StartupCache.h"
- #include "mozilla/ScopeExit.h"
-+#include "mozilla/Logging.h"
- 
- #include "nsClassHashtable.h"
- #include "nsComponentManagerUtils.h"
- #include "nsCRT.h"
- #include "nsDirectoryServiceUtils.h"
- #include "nsIClassInfo.h"
-+#include "nsIDirectoryEnumerator.h"
- #include "nsIFile.h"
- #include "nsIObserver.h"
- #include "nsIOutputStream.h"
-@@ -60,6 +62,8 @@ using namespace mozilla::Compression;
- namespace mozilla {
- namespace scache {
- 
-+static LazyLogModule gStartupCachePRLog("StartupCache");
-+
- MOZ_DEFINE_MALLOC_SIZE_OF(StartupCacheMallocSizeOf)
- 
- NS_IMETHODIMP
-@@ -169,6 +173,95 @@ StartupCache::StartupCache()
+@@ -176,6 +176,47 @@ StartupCache::StartupCache()
  
  StartupCache::~StartupCache() { UnregisterWeakMemoryReporter(this); }
  
-+// Checks the modified date of the startupCache and deletes it if the embedlite-components-qt5
-+// install is newer (determined using the modified time of /var/lib/_MOZEMBED_CACHE_CLEAN_).
-+static nsresult clearStartupCacheIfNeeded() {
-+  nsresult rv;
-+  bool exists = false;
++// Sailfish packages touch this stamp after upgrades. Clear caches created by
++// older packages before trying to load them.
++static nsresult ClearStartupCacheIfNeeded(nsIFile* aCacheFile,
++                                          bool aCustomCacheFile) {
 +  nsCOMPtr<nsIFile> systemStamp;
++  MOZ_TRY(NS_NewLocalFile(u"/var/lib/_MOZEMBED_CACHE_CLEAN_"_ns,
++                          getter_AddRefs(systemStamp)));
 +
-+  systemStamp = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
-+  systemStamp->InitWithPath(u"/var/lib/_MOZEMBED_CACHE_CLEAN_"_ns);
-+  rv = systemStamp->Exists(&exists);
-+  NS_ENSURE_SUCCESS(rv, rv);
-+
-+  if (!exists) {
++  bool stampExists = false;
++  MOZ_TRY(systemStamp->Exists(&stampExists));
++  if (!stampExists) {
 +    return NS_OK;
 +  }
 +
-+  nsAutoCString path;
-+  PRTime lastModifiedTimeClean = 0;
-+  PRTime lastModifiedTimeCache = 0;
-+  nsCOMPtr<nsIFile> file;
-+  rv = systemStamp->GetLastModifiedTime(&lastModifiedTimeClean);
-+  NS_ENSURE_SUCCESS(rv, rv);
-+
-+  // See StartupCache::Init() for cache location conditions
-+  char *env = PR_GetEnv("MOZ_STARTUP_CACHE");
-+  if (env) {
-+    rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(env), false, getter_AddRefs(file));
-+    NS_ENSURE_SUCCESS(rv, rv);
-+
-+    rv = file->GetLastModifiedTime(&lastModifiedTimeCache);
-+    NS_ENSURE_SUCCESS(rv, rv);
-+
-+    if (lastModifiedTimeCache < lastModifiedTimeClean) {
-+      rv = file->GetNativePath(path);
-+      NS_ENSURE_SUCCESS(rv, rv);
-+      MOZ_LOG(gStartupCachePRLog, LogLevel::Debug, ("Removing stale startupCache at %s", path.get()));
-+
-+      // Remove the cache
-+      rv = file->Remove(true);
-+      NS_ENSURE_SUCCESS(rv, rv);
-+    }
-+  } else {
-+    bool directory;
-+    nsCOMPtr<nsIFile> cacheDir;
-+
-+    rv = NS_GetSpecialDirectory("ProfLDS", getter_AddRefs(cacheDir));
-+    NS_ENSURE_SUCCESS(rv, rv);
-+
-+    rv = cacheDir->AppendNative("startupCache"_ns);
-+    NS_ENSURE_SUCCESS(rv, NS_OK);
-+
-+    rv = cacheDir->IsDirectory(&directory);
-+    NS_ENSURE_SUCCESS(rv, rv);
-+
-+    if (!directory) {
-+      return NS_OK;
-+    }
-+
-+    nsCOMPtr<nsIDirectoryEnumerator> dirIterator;
-+    rv = cacheDir->GetDirectoryEntries(getter_AddRefs(dirIterator));
-+    NS_ENSURE_SUCCESS(rv, NS_OK);
-+
-+    bool hasMoreElements;
-+    rv = dirIterator->HasMoreElements(&hasMoreElements);
-+    if (NS_SUCCEEDED(rv) && hasMoreElements) {
-+      nsCOMPtr<nsISupports> supports;
-+      rv = dirIterator->GetNext(getter_AddRefs(supports));
-+      NS_ENSURE_SUCCESS(rv, rv);
-+
-+      file = do_QueryInterface(supports);
-+
-+      rv = file->GetLastModifiedTime(&lastModifiedTimeCache);
-+      NS_ENSURE_SUCCESS(rv, rv);
-+
-+      if (lastModifiedTimeCache < lastModifiedTimeClean) {
-+        rv = cacheDir->GetNativePath(path);
-+        NS_ENSURE_SUCCESS(rv, rv);
-+        MOZ_LOG(gStartupCachePRLog, LogLevel::Debug, ("Removing stale startupCache at %s", path.get()));
-+
-+        // Remove the cache recursively (in boolean recursive)
-+        rv = cacheDir->Remove(true);
-+        NS_ENSURE_SUCCESS(rv, rv);
-+      }
-+    }
++  bool cacheExists = false;
++  MOZ_TRY(aCacheFile->Exists(&cacheExists));
++  if (!cacheExists) {
++    return NS_OK;
 +  }
 +
-+  return NS_OK;
++  PRTime stampModifiedTime = 0;
++  MOZ_TRY(systemStamp->GetLastModifiedTime(&stampModifiedTime));
++
++  PRTime cacheModifiedTime = 0;
++  MOZ_TRY(aCacheFile->GetLastModifiedTime(&cacheModifiedTime));
++  if (cacheModifiedTime >= stampModifiedTime) {
++    return NS_OK;
++  }
++
++  if (aCustomCacheFile) {
++    return aCacheFile->Remove(false);
++  }
++
++  // The default startup cache directory also contains related caches. Remove
++  // them together, matching Gecko's own compatibility-cache invalidation.
++  nsCOMPtr<nsIFile> cacheDirectory;
++  MOZ_TRY(aCacheFile->GetParent(getter_AddRefs(cacheDirectory)));
++  MOZ_TRY(cacheDirectory->Remove(true));
++  return cacheDirectory->Create(nsIFile::DIRECTORY_TYPE, 0777);
 +}
 +
  nsresult StartupCache::Init() {
    // workaround for bug 653936
    nsCOMPtr<nsIProtocolHandler> jarInitializer(
-@@ -180,6 +273,9 @@ nsresult StartupCache::Init() {
-     STARTUP_CACHE_WRITE_TIMEOUT = 3;
+@@ -215,6 +256,10 @@ nsresult StartupCache::Init() {
+     mFile = file.forget();
    }
  
-+  // Clear the startup cache if it's old
-+  clearStartupCacheIfNeeded();
++  rv = ClearStartupCacheIfNeeded(mFile, env && *env);
++  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
++                       "Failed to clear stale Sailfish startup cache");
 +
-   // This allows to override the startup cache filename
-   // which is useful from xpcshell, when there is no ProfLDS directory to keep
-   // cache in.
+   mObserverService = do_GetService("@mozilla.org/observer-service;1");
+ 
+   if (!mObserverService) {

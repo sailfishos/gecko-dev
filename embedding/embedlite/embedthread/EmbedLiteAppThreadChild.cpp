@@ -60,10 +60,15 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
 }
 
 PEmbedLiteWindowChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
+EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    const uintptr_t &aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
 {
   LOGT("id:%u", id);
-  EmbedLiteWindowThreadChild *window = new EmbedLiteWindowThreadChild(width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener));
+  EmbedLiteWindowThreadChild *window = new EmbedLiteWindowThreadChild(
+      width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener),
+      chromeHosted, initialContentURI);
   mWeakWindowMap[id] = window;
   window->AddRef();
   return window;
@@ -78,4 +83,3 @@ EmbedLiteAppThreadChild::AllocPCompositorBridgeChild(Transport* aTransport, Proc
 */
 } // namespace embedlite
 } // namespace mozilla
-

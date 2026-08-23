@@ -32,7 +32,8 @@ nsresult GeckoCameraDecoderModule::Startup() {
 already_AddRefed<MediaDataDecoder> GeckoCameraDecoderModule::CreateVideoDecoder(
     const CreateDecoderParams& aParams) {
   if (sInitialized && sCodecManager) {
-    RefPtr<MediaDataDecoder> decoder = new GeckoCameraVideoDecoder(sCodecManager, aParams);
+    RefPtr<MediaDataDecoder> decoder =
+        new GeckoCameraVideoDecoder(sCodecManager, aParams);
     return decoder.forget();
   }
   return nullptr;
@@ -45,12 +46,12 @@ already_AddRefed<MediaDataDecoder> GeckoCameraDecoderModule::CreateAudioDecoder(
 
 media::DecodeSupportSet GeckoCameraDecoderModule::SupportsMimeType(
     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
-  if (sInitialized && sCodecManager &&
-      sCodecManager->videoDecoderAvailable(
-          GeckoCameraVideoDecoder::CodecTypeFromMime(aMimeType))) {
+  const auto codecType = GeckoCameraVideoDecoder::CodecTypeFromMime(aMimeType);
+  if (codecType != gecko::codec::VideoCodecUnknown && sInitialized &&
+      sCodecManager && sCodecManager->videoDecoderAvailable(codecType)) {
     return media::DecodeSupport::HardwareDecode;
   }
-  return media::DecodeSupport::Unsupported;
+  return media::DecodeSupportSet{};
 }
 
 /* static */
