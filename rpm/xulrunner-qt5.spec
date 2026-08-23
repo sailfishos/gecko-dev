@@ -142,9 +142,9 @@ Patch114:    0114-sailfishos-qt-Use-minimal-QPA-for-headless-children.patch
 Patch115:    0115-sailfishos-apz-Dispatch-remote-taps-to-Gecko-main.patch
 Patch116:    0116-sailfishos-embedlite-Bind-compositors-to-their-windows.patch
 
-BuildRequires:  rust >= 1.82.0
-BuildRequires:  rust-std-static >= 1.82.0
-BuildRequires:  cargo >= 1.82.0
+BuildRequires:  rust >= 1.90.0
+BuildRequires:  rust-std-static >= 1.90.0
+BuildRequires:  cargo >= 1.90.0
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Widgets)
@@ -154,13 +154,13 @@ BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(alsa)
 %if %{system_nspr}
-BuildRequires:  pkgconfig(nspr) >= 4.32.0
+BuildRequires:  pkgconfig(nspr) >= 4.39
 %endif
 %if %{system_nss}
-BuildRequires:  pkgconfig(nss) >= 3.112
+BuildRequires:  pkgconfig(nss) >= 3.125
 %endif
 %if %{system_sqlite}
-BuildRequires:  pkgconfig(sqlite3) >= 3.49.2
+BuildRequires:  pkgconfig(sqlite3) >= 3.53.2
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
@@ -185,7 +185,7 @@ BuildRequires:  python3-devel
 BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
-BuildRequires:  cbindgen >= 0.27.0
+BuildRequires:  cbindgen >= 0.29.4
 BuildRequires:  llvm
 BuildRequires:  clang-devel
 BuildRequires:  libatomic
@@ -213,10 +213,10 @@ BuildRequires:  fdupes
 Requires: nss-ckbi >= 3.16.6
 Requires: qt5-plugin-platform-minimal
 %if %{system_nss}
-Requires: nss >= 3.112
+Requires: nss >= 3.125
 %endif
 %if %{system_sqlite}
-Requires: sqlite-libs >= 3.49.2
+Requires: sqlite-libs >= 3.53.2
 %endif
 %if %{system_ffi}
 BuildRequires:  libffi-devel > 3.0.9
@@ -241,7 +241,7 @@ Conflicts: xulrunner-devel
 Summary: Headers for xulrunner
 # Auto dependency is not picking this up.
 %if %{system_nss}
-Requires: pkgconfig(nss) >= 3.112
+Requires: pkgconfig(nss) >= 3.125
 %endif
 
 %description devel
