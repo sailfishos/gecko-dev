@@ -21,6 +21,8 @@ class GeckoCameraDecoderModule : public PlatformDecoderModule {
   friend already_AddRefed<T> MakeAndAddRef(Args&&...);
 
  public:
+  const char* Name() const override { return "GeckoCamera"; }
+
   static already_AddRefed<PlatformDecoderModule> Create();
 
   nsresult Startup() override;

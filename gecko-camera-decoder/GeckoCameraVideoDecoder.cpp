@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/AbstractThread.h"
-#include "mozilla/Unused.h"
 
 #include "GeckoCameraVideoDecoder.h"
 #include "AnnexB.h"
@@ -354,7 +353,6 @@ void GeckoCameraVideoDecoder::ReportError(std::string aErrorDescription,
   if (NS_FAILED(rv)) {
     LOG("Couldn't dispatch decoder error");
   }
-  Unused << rv;
 }
 
 void GeckoCameraVideoDecoder::onDecoderEOS() {
@@ -388,7 +386,6 @@ void GeckoCameraVideoDecoder::onDecoderEOS() {
   if (NS_FAILED(rv)) {
     LOG("Couldn't dispatch decoder EOS");
   }
-  Unused << rv;
 }
 
 gecko::codec::CodecType GeckoCameraVideoDecoder::CodecTypeFromMime(
