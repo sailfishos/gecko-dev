@@ -36,7 +36,7 @@ public:
                                           const char16_t* aMessageName,
                                           const char16_t* aMessage) const;
   bool CreateWindow(const uint32_t &parentId,
-                    const uintptr_t &parentBrowsingContext,
+                    const EmbedLiteBrowserInitData &browserInit,
                     const uint32_t &chromeFlags,
                     const bool &hidden,
                     uint32_t *createdID,
@@ -52,10 +52,10 @@ protected:
   virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                         const uint32_t &id,
                                                         const uint32_t &parentId,
-                                                        const uintptr_t &parentBrowsingContext,
                                                         const bool &isPrivateWindow,
                                                         const bool &isDesktopMode,
-                                                        const bool &isHidden) = 0;
+                                                        const bool &isHidden,
+                                                        const Maybe<EmbedLiteBrowserInitData> &browserInit) = 0;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(
       const uint16_t &width, const uint16_t &height, const uint32_t &id,
       const uintptr_t &aListener, const bool &chromeHosted,

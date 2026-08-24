@@ -34,7 +34,6 @@ public:
   EmbedLiteViewParent(const uint32_t &windowId,
                       const uint32_t &id,
                       const uint32_t &parentId,
-                      const uintptr_t &parentBrowsingContext,
                       const bool &isPrivateWindow,
                       const bool &isDesktopMode,
                       const bool &isHidden);

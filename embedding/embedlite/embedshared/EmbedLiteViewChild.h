@@ -53,10 +53,10 @@ public:
   EmbedLiteViewChild(const uint32_t &windowId,
                      const uint32_t &id,
                      const uint32_t &parentId,
-                     mozilla::dom::BrowsingContext *parentBrowsingContext,
                      const bool &isPrivateWindow,
                      const bool &isDesktopMode,
-                     const bool &isHidden);
+                     const bool &isHidden,
+                     const Maybe<EmbedLiteBrowserInitData> &browserInit);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -241,11 +241,8 @@ private:
   friend class EmbedLiteAppChild;
   friend class PEmbedLiteViewChild;
 
-  void InitGeckoWindow(const uint32_t parentId,
-                       mozilla::dom::BrowsingContext *parentBrowsingContext,
-                       const bool isPrivateWindow,
-                       const bool isDesktopMode,
-                       const bool isHidden);
+  void InitGeckoWindow();
+  void FailInitialization();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
   void UpdateAPZEventStateWidget(nsIWidget* aWidget);
   mozilla::ipc::IPCResult ProcessSingleTap(const LayoutDevicePoint &aPoint,
@@ -272,6 +269,9 @@ private:
   LayoutDeviceIntMargin mSafeAreaInsets;
 
   RefPtr<BrowserChildHelper> mHelper;
+  Maybe<EmbedLiteBrowserInitData> mBrowserInit;
+  const bool mIsPrivateWindow;
+  const bool mIsDesktopMode;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
 

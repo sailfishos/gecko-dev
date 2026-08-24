@@ -11,7 +11,6 @@
 #include "EmbedLiteApp.h"
 #include "mozilla/layers/PCompositorBridgeParent.h"
 
-#include "mozilla/Unused.h"
 
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -30,6 +29,30 @@ EmbedLiteAppParent::~EmbedLiteAppParent()
 {
   LOGT();
   MOZ_COUNT_DTOR(EmbedLiteAppParent);
+}
+
+void EmbedLiteAppParent::PushBrowserInit(
+    const EmbedLiteBrowserInitData& aBrowserInit)
+{
+  mPendingBrowserInits.AppendElement(Some(aBrowserInit));
+}
+
+Maybe<EmbedLiteBrowserInitData> EmbedLiteAppParent::TakeBrowserInit()
+{
+  if (mPendingBrowserInits.IsEmpty()) {
+    return Nothing();
+  }
+
+  Maybe<EmbedLiteBrowserInitData>& pending = mPendingBrowserInits.LastElement();
+  Maybe<EmbedLiteBrowserInitData> result = std::move(pending);
+  pending = Nothing();
+  return result;
+}
+
+void EmbedLiteAppParent::PopBrowserInit()
+{
+  MOZ_ASSERT(!mPendingBrowserInits.IsEmpty());
+  mPendingBrowserInits.RemoveLastElement();
 }
 
 

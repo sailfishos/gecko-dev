@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteAppChildIface.h"
+#include "EmbedLiteBrowserInit.h"
 #include "base/message_loop.h"
 #include "mozilla/TimeStamp.h"
 #include "nsCOMPtr.h"
@@ -45,6 +46,7 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
 {
   NS_ENSURE_ARG_POINTER(aCancel);
   NS_ENSURE_ARG_POINTER(_retval);
+  NS_ENSURE_ARG_POINTER(aOpenWindowInfo);
   *aCancel = false;
   *_retval = 0;
 
@@ -58,19 +60,27 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
   uint32_t createdID = 0;
   uint32_t parentID = parent ? parent->GetID() : 0;
 
-  RefPtr<BrowsingContext> parentBrowsingContext = aOpenWindowInfo->GetParent();
-
-  LOGT("parent: %p, chrome flags: %u, thread id: %ld parent opener id: %" PRId64 "", aParent, aChromeFlags, syscall(SYS_gettid), parentBrowsingContext->Id());
-
   const bool isForPrinting = aOpenWindowInfo->GetIsForPrinting();
-
-  mChild->CreateWindow(parentID, reinterpret_cast<uintptr_t>(parentBrowsingContext.get()), aChromeFlags, isForPrinting, &createdID, aCancel);
-
-  if (*aCancel) {
+  EmbedLiteBrowserInitData browserInit;
+  nsresult rv = BuildEmbedLiteBrowserInit(aOpenWindowInfo, aChromeFlags,
+                                           &browserInit);
+  if (NS_FAILED(rv)) {
+    LOGW("Rejecting unsupported EmbedLite popup: rv=0x%08x, remote=%d, "
+         "fission=%d", static_cast<uint32_t>(rv),
+         aOpenWindowInfo->GetIsRemote(),
+         !!(aChromeFlags & nsIWebBrowserChrome::CHROME_FISSION_WINDOW));
+    *aCancel = true;
     return NS_OK;
   }
 
-  nsresult rv(NS_OK);
+  if (!mChild->CreateWindow(parentID, browserInit, aChromeFlags,
+                            isForPrinting, &createdID, aCancel) || *aCancel) {
+    DiscardEmbedLiteBrowserInit(browserInit);
+    *aCancel = true;
+    return NS_OK;
+  }
+
+  rv = NS_OK;
   nsCOMPtr<nsIWebBrowserChrome> browser;
   nsCOMPtr<nsIThread> thread;
   NS_GetCurrentThread(getter_AddRefs(thread));
@@ -101,11 +111,14 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
     }
   }
 
-  // check to make sure that we made a new window
-  if (_retval) {
-      NS_ADDREF(*_retval = browser);
-      return NS_OK;
+  if (!browser) {
+    LOGW("EmbedLite popup browser creation failed: rv=0x%08x",
+         static_cast<uint32_t>(rv));
+    DiscardEmbedLiteBrowserInit(browserInit);
+    *aCancel = true;
+    return NS_OK;
   }
 
-  return NS_ERROR_UNEXPECTED;
+  NS_ADDREF(*_retval = browser);
+  return NS_OK;
 }

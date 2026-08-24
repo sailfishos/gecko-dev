@@ -28,7 +28,6 @@ namespace embedlite {
 EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
                                          const uint32_t &id,
                                          const uint32_t &parentId,
-                                         const uintptr_t &parentBrowsingContext,
                                          const bool &isPrivateWindow,
                                          const bool &isDesktopMode,
                                          const bool &isHidden)
@@ -57,9 +56,6 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
   }
 
   mWindow->AddObserver(this);
-
-  // This could be turned into MaybeDiscardedBrowsingContext
-  Unused << parentBrowsingContext;
 }
 
 NS_IMETHODIMP EmbedLiteViewParent::QueryInterface(REFNSIID aIID, void** aInstancePtr)

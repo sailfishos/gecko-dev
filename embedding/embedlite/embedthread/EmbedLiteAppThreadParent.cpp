@@ -60,13 +60,15 @@ mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvReadyToShutdown()
 }
 
 mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvCreateWindow(const uint32_t &parentId,
-                                                                   const uintptr_t &parentBrowsingContext,
+                                                                   const EmbedLiteBrowserInitData &browserInit,
                                                                    const uint32_t &chromeFlags,
                                                                    const bool &hidden,
                                                                    uint32_t *createdID,
                                                                    bool *cancel)
 {
-  *createdID = mApp->CreateWindowRequested(chromeFlags, hidden, parentId, parentBrowsingContext);
+  PushBrowserInit(browserInit);
+  *createdID = mApp->CreateWindowRequested(chromeFlags, hidden, parentId, 0);
+  PopBrowserInit();
   *cancel = !*createdID;
   return IPC_OK();
 }
@@ -81,16 +83,15 @@ PEmbedLiteViewParent*
 EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t &windowId,
                                                     const uint32_t &id,
                                                     const uint32_t &parentId,
-                                                    const uintptr_t &parentBrowsingContext,
                                                     const bool &isPrivateWindow,
                                                     const bool &isDesktopMode,
-                                                    const bool &isHidden)
+                                                    const bool &isHidden,
+                                                    const Maybe<EmbedLiteBrowserInitData> &browserInit)
 {
   LOGT("id:%u, parent:%u", id, parentId);
-  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(windowId, id, parentId,
-                                                               parentBrowsingContext,
-                                                               isPrivateWindow, isDesktopMode,
-                                                               isHidden);
+  (void) browserInit;
+  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(
+    windowId, id, parentId, isPrivateWindow, isDesktopMode, isHidden);
   p->AddRef();
   return p;
 }

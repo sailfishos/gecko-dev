@@ -34,7 +34,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvInitialized() override;
   virtual mozilla::ipc::IPCResult RecvReadyToShutdown() override;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
-                                                   const uintptr_t &parentBrowsingContext,
+                                                   const EmbedLiteBrowserInitData &browserInit,
                                                    const uint32_t &chromeFlags,
                                                    const bool &hidden,
                                                    uint32_t *createdID,
@@ -45,10 +45,10 @@ protected:
   virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId,
                                                           const uint32_t &id,
                                                           const uint32_t &parentId,
-                                                          const uintptr_t &parentBrowsingContext,
                                                           const bool &isPrivateWindow,
                                                           const bool &isDesktopMode,
-                                                          const bool &isHidden) override;
+                                                          const bool &isHidden,
+                                                          const Maybe<EmbedLiteBrowserInitData> &browserInit) override;
 
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor) override;
   virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(

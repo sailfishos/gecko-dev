@@ -7,11 +7,13 @@
 
 #include "EmbedLiteViewChild.h"
 #include "EmbedLiteAppThreadChild.h"
+#include "EmbedLiteBrowserInit.h"
 #include "nsWindow.h"
 
 #include "nsIURIMutator.h"
 #include "mozilla/Unused.h"
 #include "mozilla/TextControlElement.h"
+#include "mozilla/ScopeExit.h"
 
 #include "nsEmbedCID.h"
 #include "nsIBaseWindow.h"
@@ -25,6 +27,7 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
+#include "nsIOpenWindowInfo.h"
 #include "nsWebBrowser.h"
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
@@ -42,6 +45,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/PresShell.h"
@@ -72,10 +76,10 @@ static bool StartsWith(const nsACString& string, const char (&prefix)[N]) {
 EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
                                        const uint32_t &aId,
                                        const uint32_t &aParentId,
-                                       mozilla::dom::BrowsingContext *parentBrowsingContext,
                                        const bool &isPrivateWindow,
                                        const bool &isDesktopMode,
-                                       const bool &isHidden)
+                                       const bool &isHidden,
+                                       const Maybe<EmbedLiteBrowserInitData> &browserInit)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
@@ -87,25 +91,23 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
   , mSafeAreaInsets(0, 0, 0, 0)
+  , mBrowserInit(browserInit)
+  , mIsPrivateWindow(isPrivateWindow)
+  , mIsDesktopMode(isDesktopMode)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
   , mInitialized(false)
   , mDestroyAfterInit(false)
 {
   LOGT("id:%u, parentID:%u", aId, aParentId);
+  (void)isHidden;
 
   mWindow = EmbedLiteAppChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, mozilla::dom::BrowsingContext*, const bool, const bool, const bool>
-                                   ("mozilla::embedlite::EmbedLiteViewChild::InitGeckoWindow",
-                                    this,
-                                    &EmbedLiteViewChild::InitGeckoWindow,
-                                    aParentId,
-                                    parentBrowsingContext,
-                                    isPrivateWindow,
-                                    isDesktopMode,
-                                    isHidden));
+  MessageLoop::current()->PostTask(NewRunnableMethod(
+      "mozilla::embedlite::EmbedLiteViewChild::InitGeckoWindow", this,
+      &EmbedLiteViewChild::InitGeckoWindow));
 }
 
 NS_IMETHODIMP EmbedLiteViewChild::QueryInterface(REFNSIID aIID, void **aInstancePtr)
@@ -172,12 +174,28 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
   return IPC_OK();
 }
 
-void
-EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
-                                    mozilla::dom::BrowsingContext *parentBrowsingContext,
-                                    const bool isPrivateWindow,
-                                    const bool isDesktopMode,
-                                    const bool isHidden)
+void EmbedLiteViewChild::FailInitialization()
+{
+  if (mHelper) {
+    mHelper->Disconnect();
+  }
+  if (mChrome) {
+    mChrome->RemoveEventHandler();
+  }
+  if (mWidget) {
+    mWidget->Destroy();
+  }
+  mHelper = nullptr;
+  mWebBrowser = nullptr;
+  mChrome = nullptr;
+  mDOMWindow = nullptr;
+  mWebNavigation = nullptr;
+  mInitialized = true;
+  (void) SendDestroyed();
+  PEmbedLiteViewChild::Send__delete__(this);
+}
+
+void EmbedLiteViewChild::InitGeckoWindow()
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
@@ -189,7 +207,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
     return;
   }
 
-  LOGT("parentID: %u thread id: %ld", parentId, syscall(SYS_gettid));
+  LOGT("thread id: %ld", syscall(SYS_gettid));
 
 
   mWidget = new EmbedLitePuppetWidget(this);
@@ -218,45 +236,52 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   mHelper = new BrowserChildHelper(this, mId);
   mChrome->SetBrowserChildHelper(mHelper.get());
 
-  // If this is created with window.open() or otherwise via WindowCreator
-  // we'll receive parent BrowsingContext as an argument.
-  // Create a BrowsingContext for our windowless browser.
-  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(
-      nullptr, parentBrowsingContext, nullptr, EmptyString(),
-      BrowsingContext::Type::Content,
-      BrowsingContext::CreateDetachedOptions{.windowless = true});
-  browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
-  browsingContext->EnsureAttached();
-  browsingContext->InitSessionHistory();
-
-  CanonicalBrowsingContext *canonicalBrowsingContext = browsingContext->Canonical();
-  nsISecureBrowserUI *secureBrowserUI = nullptr;
-
-  // Create instance of nsSecureBrowserUI.
-  if (canonicalBrowsingContext) {
-    secureBrowserUI = canonicalBrowsingContext->GetSecureBrowserUI();
-    Unused << secureBrowserUI;
+  RefPtr<BrowsingContext> browsingContext;
+  RefPtr<dom::WindowGlobalChild> initialWindowGlobal;
+  nsCOMPtr<nsIOpenWindowInfo> initialOpenWindowInfo;
+  nsCOMPtr<nsIOpenWindowInfo> originalOpenWindowInfo;
+  const bool isPrivateStandalone =
+      mIsPrivateWindow ||
+      Preferences::GetBool("browser.privatebrowsing.autostart");
+  if (mBrowserInit) {
+    rv = RestoreEmbedLiteBrowserInit(
+        *mBrowserInit, browsingContext, initialWindowGlobal,
+        initialOpenWindowInfo, originalOpenWindowInfo);
+  } else {
+    rv = CreateEmbedLiteStandaloneInit(isPrivateStandalone, browsingContext,
+                                       initialOpenWindowInfo);
   }
-
-  if (browsingContext) {
-      LOGT("Created browsing context id: %" PRId64 " opener id: %" PRId64 "", browsingContext->Id(), browsingContext->GetOpenerId());
+  if (NS_FAILED(rv)) {
+    NS_ERROR("Failed to prepare EmbedLite browser initialization");
+    FailInitialization();
+    return;
   }
+  auto destroyInitialWindowGlobal = MakeScopeExit([&] {
+    if (initialWindowGlobal && !initialWindowGlobal->GetWindowGlobal()) {
+      initialWindowGlobal->Destroy();
+    }
+  });
 
-  // nsWebBrowser::Create creates nsDocShell, calls InitWindow for nsIBaseWindow,
-  // and finally creates nsIBaseWindow. When browsingContext is passed to
-  // nsWebBrowser::Create, typeContentWrapper type is passed to the nsWebBrowser
-  // upon instantiation.
-  mWebBrowser = nsWebBrowser::Create(mChrome, mWidget, browsingContext,
-                                     nullptr);
-  mWebBrowser->SetAllowDNSPrefetch(true);
-
-  uint32_t chromeFlags = 0; // View()->GetWindowFlags();
-
-  if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
-    chromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
+  uint32_t chromeFlags =
+      mBrowserInit ? mBrowserInit->chromeFlags() : 0;
+  if (!mBrowserInit && isPrivateStandalone) {
+    chromeFlags |= nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW |
+                   nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
   }
-
   mChrome->SetChromeFlags(chromeFlags);
+
+  RefPtr<nsWebBrowser> webBrowser;
+  rv = nsWebBrowser::Create(mChrome, mWidget, browsingContext,
+                            initialWindowGlobal, initialOpenWindowInfo,
+                            getter_AddRefs(webBrowser));
+  if (!IsUsableBrowserCreation(rv, webBrowser.get())) {
+    NS_ERROR("Failed to create web browser for EmbedLite view");
+    FailInitialization();
+    return;
+  }
+  mWebBrowser = webBrowser;
+  destroyInitialWindowGlobal.release();
+  mWebBrowser->SetAllowDNSPrefetch(true);
 
   nsCOMPtr<mozIDOMWindowProxy> domWindow;
   if (NS_FAILED(mWebBrowser->GetContentDOMWindow(getter_AddRefs(domWindow)))) {
@@ -266,6 +291,12 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   mDOMWindow = do_QueryInterface(domWindow);
   if (!mDOMWindow) {
     NS_ERROR("Got stuck with root DOMWindow!");
+    FailInitialization();
+    return;
+  }
+  if (originalOpenWindowInfo) {
+    mDOMWindow->SetInitialPrincipal(
+        originalOpenWindowInfo->PrincipalToInheritForAboutBlank());
   }
 
   mozilla::dom::AutoNoJSAPI nojsapi;
@@ -273,6 +304,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   mWebNavigation = static_cast<nsIWebNavigation*>(mWebBrowser.get());
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
+    FailInitialization();
+    return;
   }
 
   mHelper->SetWebNavigation(mWebNavigation);
@@ -314,7 +347,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
 
   UpdateAPZEventStateWidget(mWidget);
 
-  SetDesktopMode(isDesktopMode);
+  SetDesktopMode(mIsDesktopMode);
 
   OnGeckoWindowInitialized();
   mHelper->OpenIPC();

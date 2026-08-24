@@ -6,6 +6,7 @@
 
 
 UNIFIED_SOURCES += [
+    'TestEmbedLiteBrowserInit.cpp',
     'TestEmbedLiteChromeContentSession.cpp',
     'TestEmbedLiteChromeWindowHost.cpp',
     'TestEmbedLiteCoreInit.cpp',

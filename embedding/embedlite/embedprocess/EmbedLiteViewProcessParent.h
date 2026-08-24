@@ -18,7 +18,6 @@ public:
     MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t &windowId,
                                             const uint32_t &id,
                                             const uint32_t &parentId,
-                                            const uintptr_t &parentBrowsingContext,
                                             const bool &isPrivateWindow,
                                             const bool &isDesktopMode,
                                             const bool &isHidden);
@@ -31,4 +30,3 @@ private:
 } // namespace mozilla
 
 #endif // MOZ_VIEW_EMBED_PROCESS_PARENT_H
-

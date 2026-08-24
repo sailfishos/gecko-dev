@@ -15,11 +15,12 @@ namespace embedlite {
 EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t &windowId,
                                                    const uint32_t &id,
                                                    const uint32_t &parentId,
-                                                   mozilla::dom::BrowsingContext *parentBrowsingContext,
                                                    const bool &isPrivateWindow,
                                                    const bool &isDesktopMode,
-                                                   const bool &isHidden)
-  : EmbedLiteViewChild(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode, isHidden)
+                                                   const bool &isHidden,
+                                                   const Maybe<EmbedLiteBrowserInitData> &browserInit)
+  : EmbedLiteViewChild(windowId, id, parentId, isPrivateWindow, isDesktopMode,
+                       isHidden, browserInit)
 {
   LOGT();
 }
@@ -31,4 +32,3 @@ EmbedLiteViewThreadChild::~EmbedLiteViewThreadChild()
 
 } // namespace embedlite
 } // namespace mozilla
-

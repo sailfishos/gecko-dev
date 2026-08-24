@@ -21,10 +21,10 @@ public:
   MOZ_IMPLICIT EmbedLiteViewProcessChild(const uint32_t &windowId,
                                          const uint32_t &id,
                                          const uint32_t &parentId,
-                                         mozilla::dom::BrowsingContext *parentBrowsingContext,
                                          const bool &isPrivateWindow,
                                          const bool &isDesktopMode,
-                                         const bool &isHidden);
+                                         const bool &isHidden,
+                                         const Maybe<EmbedLiteBrowserInitData> &browserInit);
 
 protected:
   virtual void OnGeckoWindowInitialized();

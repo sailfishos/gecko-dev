@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 25 Aug 2026 13:00:05 +0200
+Subject: [sailfishos][embedlite] Handle in-process history traversal
+
+Legacy EmbedLite views have no ContentParent, but the ESR153 traversable
+unload check dispatched through one unconditionally.
+
+Share the content-side navigate dispatch between IPC and local callers, and
+preserve asynchronous ordering for the in-process path.
+
+The in-process failure was identified in smatkovi/gecko-dev-esr153 commit
+40afc836.
+
+Co-authored-by: Sebastian Matkovich <38816871+smatkovi@users.noreply.github.com>
+---
+ dom/ipc/ContentChild.cpp       | 13 +++++++++++--
+ dom/ipc/ContentChild.h         |  6 ++++++
+ dom/ipc/WindowGlobalParent.cpp | 26 +++++++++++++++++++++-----
+ 3 files changed, 38 insertions(+), 7 deletions(-)
+
+diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
+index fb9dbd273918..37c3e17bb385 100644
+--- a/dom/ipc/ContentChild.cpp
++++ b/dom/ipc/ContentChild.cpp
+@@ -4521,14 +4521,23 @@ mozilla::ipc::IPCResult ContentChild::RecvDispatchNavigateToTraversable(
+     const MaybeDiscarded<BrowsingContext>& aTraversable,
+     const mozilla::NotNull<RefPtr<nsDocShellLoadState>>& aLoadState,
+     DispatchNavigateToTraversableResolver&& aResolver) {
+-  if (aTraversable.IsNullOrDiscarded() || !aTraversable->GetDocShell()) {
++  DispatchNavigateToTraversable(
++      aTraversable.IsNullOrDiscarded() ? nullptr : aTraversable.get(),
++      aLoadState, aResolver);
++  return IPC_OK();
++}
++
++/* static */ void ContentChild::DispatchNavigateToTraversable(
++    BrowsingContext* aTraversable,
++    const mozilla::NotNull<RefPtr<nsDocShellLoadState>>& aLoadState,
++    const DispatchNavigateToTraversableResolver& aResolver) {
++  if (!aTraversable || !aTraversable->GetDocShell()) {
+     aResolver(nsIDocumentViewer::eContinue);
+   } else {
+     RefPtr docShell = nsDocShell::Cast(aTraversable->GetDocShell());
+     aResolver(docShell->MaybeFireTraversableTraverseHistory(
+         MOZ_KnownLive(aLoadState.get()), Nothing()));
+   }
+-  return IPC_OK();
+ }
+ 
+ mozilla::ipc::IPCResult ContentChild::RecvInitNextGenLocalStorageEnabled(
+diff --git a/dom/ipc/ContentChild.h b/dom/ipc/ContentChild.h
+index 1de5f331b0a3..7380114cf420 100644
+--- a/dom/ipc/ContentChild.h
++++ b/dom/ipc/ContentChild.h
+@@ -815,6 +815,12 @@ class ContentChild final : public PContentChild,
+           aLoadState,
+       const DispatchBeforeUnloadToSubtreeResolver& aResolver);
+ 
++  MOZ_CAN_RUN_SCRIPT
++  static void DispatchNavigateToTraversable(
++      BrowsingContext* aTraversable,
++      const mozilla::NotNull<RefPtr<nsDocShellLoadState>>& aLoadState,
++      const DispatchNavigateToTraversableResolver& aResolver);
++
+   hal::ProcessPriority GetProcessPriority() const { return mProcessPriority; }
+ 
+   hal::PerformanceHintSession* PerformanceHintSession() const {
+diff --git a/dom/ipc/WindowGlobalParent.cpp b/dom/ipc/WindowGlobalParent.cpp
+index 2338c2ae3cee..94fb3dce643b 100644
+--- a/dom/ipc/WindowGlobalParent.cpp
++++ b/dom/ipc/WindowGlobalParent.cpp
+@@ -958,12 +958,28 @@ class CheckPermitUnloadRequest final : public PromiseNativeHandler,
+       // but we still need to handle the traversable navigate handler.
+       mozilla::NotNull<RefPtr<nsDocShellLoadState>> loadState =
+           WrapNotNull(aDocShellLoadState);
+-      if (mAction ==
+-          nsIDocumentViewer::PermitUnloadAction::eDontPromptAndUnload) {
+-        cp->SendDispatchNavigateToTraversable(bc, loadState, resolve, reject);
++      if (cp) {
++        if (mAction ==
++            nsIDocumentViewer::PermitUnloadAction::eDontPromptAndUnload) {
++          cp->SendDispatchNavigateToTraversable(bc, loadState, resolve, reject);
++        } else {
++          cp->SendDispatchBeforeUnloadToSubtree(bc, Some(loadState), resolve,
++                                                reject);
++        }
+       } else {
+-        cp->SendDispatchBeforeUnloadToSubtree(bc, Some(loadState), resolve,
+-                                              reject);
++        NS_DispatchToMainThread(NS_NewRunnableFunction(
++            "DispatchNavigateToTraversable",
++            [action = mAction, bc = RefPtr{bc}, loadState,
++             resolve]() MOZ_CAN_RUN_SCRIPT_BOUNDARY_LAMBDA {
++              if (action == nsIDocumentViewer::PermitUnloadAction::
++                                eDontPromptAndUnload) {
++                ContentChild::DispatchNavigateToTraversable(bc, loadState,
++                                                            resolve);
++              } else {
++                ContentChild::DispatchBeforeUnloadToSubtree(
++                    bc, Some(loadState), resolve);
++              }
++            }));
+       }
+     } else {
+       bc->PreOrderWalk([&](dom::BrowsingContext* aBC) {

@@ -3,6 +3,7 @@
 #define __gen_EmbedLiteAppChildIface_h__
 
 #include "EmbedLiteViewChildIface.h"
+#include "mozilla/embedlite/PEmbedLiteApp.h"
 
 class nsIWebBrowserChrome;
 namespace mozilla {
@@ -14,7 +15,7 @@ public:
   virtual EmbedLiteViewChildIface* GetViewByID(uint32_t aId) const = 0;
   virtual EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome *aParent) const = 0;
   virtual bool CreateWindow(const uint32_t &parentId,
-                            const uintptr_t &parentBrowsingContext,
+                            const EmbedLiteBrowserInitData &browserInit,
                             const uint32_t &chromeFlags,
                             const bool &hidden,
                             uint32_t *createdID,

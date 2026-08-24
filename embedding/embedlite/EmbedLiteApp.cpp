@@ -514,18 +514,23 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t a
       "Legacy EmbedLite views cannot be added to a chrome-hosted window");
     return nullptr;
   }
+  EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
+  Maybe<EmbedLiteBrowserInitData> browserInit = appParent->TakeBrowserInit();
+  if (!browserInit && aParentBrowsingContext) {
+    NS_WARNING("Content-created EmbedLite views require browser initialization data");
+    return nullptr;
+  }
   static uint32_t sViewCreateID = 0;
   sViewCreateID++;
 
-  EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
   PEmbedLiteViewParent* viewParent =
       appParent->AllocPEmbedLiteViewParent(aWindow->GetUniqueID(), sViewCreateID,
-                                           aParent, aParentBrowsingContext, aIsPrivateWindow,
-                                           isDesktopMode, isHidden);
+                                           aParent, aIsPrivateWindow, isDesktopMode,
+                                           isHidden, browserInit);
   viewParent = appParent->SendPEmbedLiteViewConstructor(viewParent,
                                                         aWindow->GetUniqueID(), sViewCreateID,
-                                                        aParent, aParentBrowsingContext, aIsPrivateWindow,
-                                                        isDesktopMode, isHidden);
+                                                        aParent, aIsPrivateWindow, isDesktopMode,
+                                                        isHidden, browserInit);
   EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
   mViews[sViewCreateID] = view;
   return view;

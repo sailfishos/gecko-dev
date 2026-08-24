@@ -38,22 +38,16 @@ PEmbedLiteViewChild*
 EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                   const uint32_t &id,
                                                   const uint32_t &parentId,
-                                                  const uintptr_t &parentBrowsingContext,
                                                   const bool &isPrivateWindow,
                                                   const bool &isDesktopMode,
-                                                  const bool &isHidden)
+                                                  const bool &isHidden,
+                                                  const Maybe<EmbedLiteBrowserInitData> &browserInit)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
 
-  mozilla::dom::BrowsingContext *parentBrowsingContextPtr = nullptr;
-  if (parentBrowsingContext) {
-    parentBrowsingContextPtr = reinterpret_cast<mozilla::dom::BrowsingContext*>(parentBrowsingContext);
-  }
-
   EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(windowId, id, parentId,
-                                                                parentBrowsingContextPtr,
                                                                 isPrivateWindow, isDesktopMode,
-                                                                isHidden);
+                                                                isHidden, browserInit);
   mWeakViewMap[id] = view;
   view->AddRef();
   return view;

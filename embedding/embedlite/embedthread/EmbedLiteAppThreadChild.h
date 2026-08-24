@@ -23,10 +23,10 @@ protected:
   virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                         const uint32_t &id,
                                                         const uint32_t &parentId,
-                                                        const uintptr_t &parentBrowsingContext,
                                                         const bool &isPrivateWindow,
                                                         const bool &isDesktopMode,
-                                                        const bool &isHidden) override;
+                                                        const bool &isHidden,
+                                                        const Maybe<EmbedLiteBrowserInitData> &browserInit) override;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(
       const uint16_t &width, const uint16_t &height, const uint32_t &id,
       const uintptr_t &aListener, const bool &chromeHosted,

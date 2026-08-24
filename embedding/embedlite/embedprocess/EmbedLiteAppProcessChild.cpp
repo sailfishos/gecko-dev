@@ -165,10 +165,10 @@ PEmbedLiteViewChild*
 EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                    const uint32_t &id,
                                                    const uint32_t &parentId,
-                                                   const uintptr_t &parentBrowsingContext,
                                                    const bool &isPrivateWindow,
                                                    const bool &isDesktopMode,
-                                                   const bool &isHidden)
+                                                   const bool &isHidden,
+                                                   const Maybe<EmbedLiteBrowserInitData> &browserInit)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
   static bool sViewInitializeOnce = false;
@@ -176,17 +176,9 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
     gfxPlatform::GetPlatform();
     sViewInitializeOnce = true;
   }
-
-
-  mozilla::dom::BrowsingContext *parentBrowsingContextPtr = nullptr;
-  if (parentBrowsingContext) {
-    parentBrowsingContextPtr = reinterpret_cast<mozilla::dom::BrowsingContext*>(parentBrowsingContext);
-  }
-
   EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(windowId, id, parentId,
-                                                                  parentBrowsingContextPtr,
                                                                   isPrivateWindow, isDesktopMode,
-                                                                  isHidden);
+                                                                  isHidden, browserInit);
   view->AddRef();
   return view;
 }

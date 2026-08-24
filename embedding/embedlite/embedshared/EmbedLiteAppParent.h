@@ -24,6 +24,10 @@ class EmbedLiteAppParent : public PEmbedLiteAppParent
 public:
   EmbedLiteAppParent();
 
+  void PushBrowserInit(const EmbedLiteBrowserInitData& aBrowserInit);
+  Maybe<EmbedLiteBrowserInitData> TakeBrowserInit();
+  void PopBrowserInit();
+
 protected:
   virtual ~EmbedLiteAppParent();
 
@@ -32,10 +36,10 @@ protected:
   virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t &windowId,
                                                           const uint32_t &id,
                                                           const uint32_t &parentId,
-                                                          const uintptr_t &parentBrowsingContext,
                                                           const bool &isPrivateWindow,
                                                           const bool &isDesktopMode,
-                                                          const bool &isHidden)  = 0;
+                                                          const bool &isHidden,
+                                                          const Maybe<EmbedLiteBrowserInitData> &browserInit)  = 0;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*)  = 0;
   virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(
       const uint16_t &width, const uint16_t &height, const uint32_t &id,
@@ -49,7 +53,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
                                               const nsString &data)  = 0;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
-                                                   const uintptr_t &parentBrowsingContext,
+                                                   const EmbedLiteBrowserInitData &browserInit,
                                                    const uint32_t &chromeFlags,
                                                    const bool &hidden,
                                                    uint32_t *createdID,
@@ -59,6 +63,7 @@ protected:
 private:
   friend class EmbedLiteApp;
   friend class PEmbedLiteAppParent;
+  nsTArray<Maybe<EmbedLiteBrowserInitData>> mPendingBrowserInits;
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppParent);
 };
 

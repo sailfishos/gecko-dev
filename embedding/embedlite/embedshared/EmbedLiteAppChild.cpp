@@ -188,13 +188,14 @@ EmbedLiteAppChild::DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild* aActor)
 }
 
 bool EmbedLiteAppChild::CreateWindow(const uint32_t &parentId,
-                                     const uintptr_t &parentBrowsingContext,
+                                     const EmbedLiteBrowserInitData &browserInit,
                                      const uint32_t &chromeFlags,
                                      const bool &hidden,
                                      uint32_t *createdID,
                                      bool *cancel)
 {
-  return SendCreateWindow(parentId, parentBrowsingContext, chromeFlags, hidden, createdID, cancel);
+  return SendCreateWindow(parentId, browserInit, chromeFlags, hidden,
+                          createdID, cancel);
 }
 
 EmbedLiteViewChildIface*
