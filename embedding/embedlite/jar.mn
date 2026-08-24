@@ -7,3 +7,5 @@ embedlitechrome.jar:
   content/browser.xhtml (content/browser.xhtml)
   content/browser.js (content/browser.js)
   content/contentbridge-child.js (content/contentbridge-child.js)
+  content/domfullscreen-child.sys.mjs (content/domfullscreen-child.sys.mjs)
+  content/domfullscreen-parent.sys.mjs (content/domfullscreen-parent.sys.mjs)

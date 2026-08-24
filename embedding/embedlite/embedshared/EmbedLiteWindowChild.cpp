@@ -485,12 +485,19 @@ void EmbedLiteWindowChild::ChromeInputContextChanged(
 
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)
 {
-  mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
+  const LayoutDeviceIntRect bounds(
+    0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
+  const bool sizeChanged = bounds.Width() != mBounds.Width() ||
+                           bounds.Height() != mBounds.Height();
+  mBounds = bounds;
   LOGT("this:%p width: %f, height: %f as int w: %d h: %d", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   if (mWidget) {
     nsWindow *widget = GetWidget();
     widget->SetSize(aSize.width, aSize.height);
     widget->UpdateBounds(true);
+  }
+  if (sizeChanged) {
+    RefreshScreen();
   }
   return IPC_OK();
 }

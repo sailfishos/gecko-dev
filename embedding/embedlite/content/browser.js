@@ -15,6 +15,30 @@
   const frameScripts = new Set();
   const messageNames = new Set();
 
+  try {
+    ChromeUtils.registerWindowActor("EmbedLiteDOMFullscreen", {
+      parent: {
+        esModuleURI:
+          "chrome://embedlitechrome/content/domfullscreen-parent.sys.mjs",
+      },
+      child: {
+        esModuleURI:
+          "chrome://embedlitechrome/content/domfullscreen-child.sys.mjs",
+        events: {
+          "MozDOMFullscreen:Request": {},
+          "MozDOMFullscreen:Entered": {},
+          "MozDOMFullscreen:Exit": {},
+          "MozDOMFullscreen:Exited": {},
+        },
+      },
+      allFrames: true,
+    });
+  } catch (error) {
+    if (error.name !== "NotSupportedError") {
+      throw error;
+    }
+  }
+
   function emit(browser, type, name, data) {
     const normalized = data === undefined ? {} : data;
     let json;
