@@ -116,7 +116,8 @@ nsEmbedClipboard::SetNativeClipboardData(nsITransferable* aTransferable,
 
 Result<nsCOMPtr<nsISupports>, nsresult>
 nsEmbedClipboard::GetNativeClipboardData(const nsACString& aFlavor,
-                                         ClipboardType aWhichClipboard)
+                                         ClipboardType aWhichClipboard,
+                                         uint64_t aThreshold)
 {
   MOZ_DIAGNOSTIC_ASSERT(
     nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
@@ -153,6 +154,11 @@ nsEmbedClipboard::GetNativeClipboardData(const nsACString& aFlavor,
   }
   if (!mActive) {
     return Err(NS_ERROR_ABORT);
+  }
+  if (aThreshold &&
+      uint64_t(mBuffer.Length()) * sizeof(char16_t) > aThreshold) {
+    mBuffer.Truncate();
+    return Err(NS_ERROR_CLIPBOARD_TOO_BIG);
   }
 
   auto result = CreateTextData(mBuffer);
