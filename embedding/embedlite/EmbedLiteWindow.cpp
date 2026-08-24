@@ -66,7 +66,7 @@ void EmbedLiteWindow::Destroyed()
 
 void EmbedLiteWindow::SetSize(int width, int height)
 {
-  Unused << mWindowParent->SendSetSize(gfxSize(width, height));
+  mWindowParent->SetSize(width, height);
 }
 
 uint32_t EmbedLiteWindow::GetUniqueID() const
@@ -101,7 +101,7 @@ EmbedLiteChromeTabSession* EmbedLiteWindow::GetChromeTabSession()
 
 void EmbedLiteWindow::SetContentOrientation(mozilla::embedlite::ScreenRotation rotation)
 {
-  Unused << mWindowParent->SendSetContentOrientation(rotation);
+  mWindowParent->SetContentOrientation(rotation);
 }
 
 void EmbedLiteWindow::ScheduleUpdate()

@@ -159,18 +159,14 @@ EmbedLiteCompositorBridgeParent::EnsureSurfaceSizeFromWindow()
     return;
   }
 
-  const int width = static_cast<int>(parentWindow->mSize.width);
-  const int height = static_cast<int>(parentWindow->mSize.height);
+  const gfxSize surfaceSize = parentWindow->GetSurfaceSize();
+  const int width = static_cast<int>(surfaceSize.width);
+  const int height = static_cast<int>(surfaceSize.height);
   if (width <= 0 || height <= 0) {
     return;
   }
 
-  MutexAutoLock lock(mRenderMutex);
-  if (!mEGLSurfaceSize.IsEmpty()) {
-    return;
-  }
-  mSurfaceOrigin.MoveTo(0, 0);
-  SetEGLSurfaceRect(0, 0, width, height);
+  SetSurfaceRect(0, 0, width, height);
 }
 
 bool

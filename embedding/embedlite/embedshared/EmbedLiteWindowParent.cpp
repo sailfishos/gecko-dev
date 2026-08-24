@@ -76,8 +76,8 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mHasContentState(false)
   , mPlatformFrameListener(nullptr)
   , mCompositor(nullptr)
-  , mSize(width, height)
-  , mRotation(mozilla::ROTATION_0)
+  , mGeometry(GeometryState{gfxSize(width, height), mozilla::ROTATION_0},
+              "EmbedLiteWindowParent::mGeometry")
 {
   MOZ_ASSERT(mListener);
 
@@ -151,6 +151,55 @@ RefPtr<EmbedLiteWindowParent> EmbedLiteWindowParent::Current()
     return it->second;
   }
   return nullptr;
+}
+
+void EmbedLiteWindowParent::SetSize(int width, int height)
+{
+  bool changed = false;
+  if (width > 0 && height > 0) {
+    auto geometry = mGeometry.Lock();
+    if (geometry->size.width != width || geometry->size.height != height) {
+      geometry->size = gfxSize(width, height);
+      changed = true;
+    }
+  }
+
+  Unused << SendSetSize(gfxSize(width, height));
+  if (changed) {
+    ScheduleUpdate();
+  }
+}
+
+void
+EmbedLiteWindowParent::SetContentOrientation(const uint32_t &aRotation)
+{
+  MOZ_ASSERT(aRotation < mozilla::ROTATION_COUNT);
+  bool changed = false;
+  {
+    auto geometry = mGeometry.Lock();
+    const auto rotation = static_cast<mozilla::ScreenRotation>(aRotation);
+    if (geometry->rotation != rotation) {
+      geometry->rotation = rotation;
+      changed = true;
+    }
+  }
+
+  Unused << SendSetContentOrientation(aRotation);
+  if (changed) {
+    ScheduleUpdate();
+  }
+}
+
+gfxSize EmbedLiteWindowParent::GetSurfaceSize()
+{
+  auto geometry = mGeometry.ConstLock();
+  // EmbedLite sizes are expressed in the screen's native orientation. Match
+  // the rotated bounds that PuppetWidgetBase exposes to Gecko layout.
+  if (geometry->rotation == mozilla::ROTATION_0 ||
+      geometry->rotation == mozilla::ROTATION_180) {
+    return geometry->size;
+  }
+  return gfxSize(geometry->size.height, geometry->size.width);
 }
 
 void EmbedLiteWindowParent::AddObserver(EmbedLiteWindowParentObserver* obs)

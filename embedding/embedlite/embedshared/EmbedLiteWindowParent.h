@@ -10,6 +10,7 @@
 #include <set>
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
+#include "mozilla/DataMutex.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"
 #include "EmbedLiteChromeInputSession.h"
@@ -147,6 +148,13 @@ private:
   static void Register(EmbedLiteWindowParent* aParent);
   static void Unregister(EmbedLiteWindowParent* aParent);
 
+  struct GeometryState {
+    gfxSize size;
+    mozilla::ScreenRotation rotation;
+  };
+
+  gfxSize GetSurfaceSize();
+
   mozilla::ipc::IPCResult RecvInitialized(const bool &success);
   mozilla::ipc::IPCResult RecvDestroyed();
   mozilla::ipc::IPCResult RecvOnLocationChanged(
@@ -227,9 +235,7 @@ private:
   EmbedLitePlatformFrameListener* mPlatformFrameListener;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
-
-  gfxSize mSize;
-  mozilla::ScreenRotation mRotation;
+  DataMutex<GeometryState> mGeometry;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowParent);
 };

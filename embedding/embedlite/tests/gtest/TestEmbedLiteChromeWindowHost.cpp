@@ -153,6 +153,35 @@ TEST(EmbedLiteChromeWindowHostTest, InvalidateUsesAttachedListener)
   widget->Destroy();
 }
 
+TEST(EmbedLiteChromeWindowHostTest, RotationSwapsNativeSizeForLayout)
+{
+  RefPtr<TestEmbedLitePuppetWidget> widget =
+    new TestEmbedLitePuppetWidget;
+  widget->SetSize(100, 200);
+
+  widget->SetRotation(mozilla::ROTATION_0);
+  widget->UpdateBounds(false);
+  EXPECT_EQ(widget->GetBounds().width, 100);
+  EXPECT_EQ(widget->GetBounds().height, 200);
+
+  widget->SetRotation(mozilla::ROTATION_90);
+  widget->UpdateBounds(false);
+  EXPECT_EQ(widget->GetBounds().width, 200);
+  EXPECT_EQ(widget->GetBounds().height, 100);
+
+  widget->SetRotation(mozilla::ROTATION_180);
+  widget->UpdateBounds(false);
+  EXPECT_EQ(widget->GetBounds().width, 100);
+  EXPECT_EQ(widget->GetBounds().height, 200);
+
+  widget->SetRotation(mozilla::ROTATION_270);
+  widget->UpdateBounds(false);
+  EXPECT_EQ(widget->GetBounds().width, 200);
+  EXPECT_EQ(widget->GetBounds().height, 100);
+
+  widget->Destroy();
+}
+
 TEST(EmbedLiteChromeWindowHostTest, InputUsesHostedAttachedListener)
 {
   const LayoutDeviceIntRect bounds(0, 0, 100, 100);
