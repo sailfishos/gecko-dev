@@ -24,9 +24,14 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
 
 public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedContentController, override)
+
   EmbedContentController(EmbedLiteViewParent *aRenderFrame, nsISerialEventTarget *aUIThread);
+
+protected:
   virtual ~EmbedContentController();
 
+public:
   // GeckoContentController interface
   virtual void RequestContentRepaint(const layers::RepaintRequest &aRequest) override;
 

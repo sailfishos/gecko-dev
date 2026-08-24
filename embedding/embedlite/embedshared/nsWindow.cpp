@@ -122,7 +122,7 @@ KeyNameIndex ChromeKeyNameIndex(int32_t aDomKeyCode)
   if (aDomKeyCode == _keyCode) {                         \
     return KEY_NAME_INDEX_##keyNameIdx_;                 \
   }
-#include "KeyCodeConsensus_En_US.h"
+#include "KeyCodeConsensus_En_US.inc"
   return KEY_NAME_INDEX_USE_STRING;
 #undef CONTROL
 #undef KEY
@@ -135,7 +135,7 @@ CodeNameIndex ChromeCodeNameIndex(int32_t aCharCode)
     case key_[0]:                                      \
       return CODE_NAME_INDEX_##_codeNameIdx;
 #define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
-#include "KeyCodeConsensus_En_US.h"
+#include "KeyCodeConsensus_En_US.inc"
     default:
       return CODE_NAME_INDEX_UNKNOWN;
 #undef CONTROL
@@ -150,7 +150,7 @@ Modifiers ChromeKeyModifiers(int32_t aCharCode)
     case key_[0]:                                      \
       return _modifier;
 #define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
-#include "KeyCodeConsensus_En_US.h"
+#include "KeyCodeConsensus_En_US.inc"
     default:
       return 0;
 #undef CONTROL
@@ -257,10 +257,10 @@ nsWindow::nsWindow(EmbedLiteWindowChild *window)
 
 nsresult
 nsWindow::Create(nsIWidget *aParent, const LayoutDeviceIntRect &aRect,
-                 widget::InitData *aInitData)
+                 const widget::InitData& aInitData)
 {
   LOGT();
-  Unused << PuppetWidgetBase::Create(aParent, aRect, aInitData);
+  (void) PuppetWidgetBase::Create(aParent, aRect, aInitData);
   gfxPlatform::GetPlatform();
 
 #if DEBUG
@@ -288,13 +288,6 @@ nsWindow::Destroy()
 #endif
 }
 
-NS_IMETHODIMP
-nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent, nsEventStatus &aStatus)
-{
-  aStatus = DispatchEvent(aEvent);
-  return NS_OK;
-}
-
 void
 nsWindow::SetInputContext(const InputContext &aContext, const InputContextAction &aAction)
 {
@@ -315,9 +308,9 @@ nsWindow::Show(bool aState)
 }
 
 void
-nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
+nsWindow::Resize(const DesktopSize& aSize, bool aRepaint)
 {
-  PuppetWidgetBase::Resize(aWidth, aHeight, aRepaint);
+  PuppetWidgetBase::Resize(aSize, aRepaint);
   if (GetCompositorBridgeParent()) {
     static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->
         SetSurfaceRect(mNaturalBounds.x, mNaturalBounds.y, mNaturalBounds.width, mNaturalBounds.height);
@@ -364,7 +357,7 @@ void
 nsWindow::CreateCompositor(int aWidth, int aHeight)
 {
   LOGT();
-  nsBaseWidget::CreateCompositor(aWidth, aHeight);
+  nsIWidget::CreateCompositor(aWidth, aHeight);
 }
 
 void *
@@ -435,7 +428,7 @@ bool
 nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
-  Unused << aContext;
+  (void) aContext;
   if (!IsVisible() || !mActive) {
     return false;
   }
@@ -451,7 +444,7 @@ void
 nsWindow::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
-  Unused << aContext;
+  (void) aContext;
 
   if (GetCompositorBridgeParent()) {
     static_cast<EmbedLiteCompositorBridgeParent*>(
@@ -605,7 +598,7 @@ nsWindow::DispatchChromeInputEvent(WidgetInputEvent* aEvent)
   }
 
   aEvent->mWidget = this;
-  Unused << nsBaseWidget::DispatchInputEvent(aEvent);
+  (void) nsIWidget::DispatchInputEvent(aEvent);
   return true;
 }
 
@@ -664,11 +657,10 @@ nsWindow::DispatchChromeTextEvent(
   };
 
   if (aReplacementLength > 0) {
-    nsEventStatus status = nsEventStatus_eIgnore;
     WidgetQueryContentEvent querySelection(
       true, eQuerySelectedText, widget);
-    if (NS_FAILED(widget->DispatchEvent(&querySelection, status)) ||
-        !querySelection.FoundSelection() || !stillAttached()) {
+    widget->DispatchEvent(&querySelection);
+    if (!querySelection.FoundSelection() || !stillAttached()) {
       return false;
     }
 
@@ -686,17 +678,15 @@ nsWindow::DispatchChromeTextEvent(
     selection.mLength = static_cast<uint32_t>(aReplacementLength);
     selection.mReversed = false;
     selection.mExpandToClusterBoundary = false;
-    status = nsEventStatus_eIgnore;
-    if (NS_FAILED(widget->DispatchEvent(&selection, status)) ||
-        !selection.mSucceeded || !stillAttached()) {
+    widget->DispatchEvent(&selection);
+    if (!selection.mSucceeded || !stillAttached()) {
       return false;
     }
 
     WidgetContentCommandEvent deleteSelection(
       true, eContentCommandDelete, widget);
-    status = nsEventStatus_eIgnore;
-    if (NS_FAILED(widget->DispatchEvent(&deleteSelection, status)) ||
-        !deleteSelection.mSucceeded || !stillAttached()) {
+    widget->DispatchEvent(&deleteSelection);
+    if (!deleteSelection.mSucceeded || !stillAttached()) {
       return false;
     }
   }
@@ -773,7 +763,7 @@ nsWindow::DispatchChromeKeyPress(
     return true;
   }
 
-  Unused << dispatcher->MaybeDispatchKeypressEvents(event, status);
+  (void) dispatcher->MaybeDispatchKeypressEvents(event, status);
   return true;
 }
 
@@ -849,7 +839,7 @@ void nsWindow::EndChromeInputTransaction()
   if (dispatcher->IsComposing()) {
     const nsString empty;
     nsEventStatus status = nsEventStatus_eIgnore;
-    Unused << dispatcher->CommitComposition(status, &empty);
+    (void) dispatcher->CommitComposition(status, &empty);
   }
   if (!widget->Destroyed() && !dispatcher->IsComposing() &&
       !dispatcher->IsDispatchingEvent()) {
@@ -950,9 +940,7 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
   if (aEvent && aEvent->AsInputEvent()) {
     if (mChromeInputReady && mChromeHostedWidget) {
       aEvent->mWidget = mChromeHostedWidget;
-      nsEventStatus status = nsEventStatus_eIgnore;
-      Unused << mChromeHostedWidget->DispatchEvent(aEvent, status);
-      return status;
+      return mChromeHostedWidget->DispatchEvent(aEvent);
     }
 
     if (!mChromeHostedWidget && mAPZEventState &&
@@ -961,12 +949,7 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
       return nsEventStatus_eIgnore;
     }
   }
-  if (mAttachedWidgetListener) {
-      return mAttachedWidgetListener->HandleEvent(aEvent, mUseAttachedEvents);
-  } else if (mWidgetListener) {
-      return mWidgetListener->HandleEvent(aEvent, mUseAttachedEvents);
-  }
-  return nsEventStatus_eIgnore;
+  return nsIWidget::DispatchEvent(aEvent);
 }
 
 }  // namespace embedlite

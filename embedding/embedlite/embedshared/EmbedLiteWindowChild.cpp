@@ -13,7 +13,6 @@
 #include "EmbedLiteChromeSessionChild.h"
 #include "EmbedLiteChromeContentSession.h"
 #include "EmbedLiteWindowChild.h"
-#include "mozilla/Unused.h"
 #include "Hal.h"
 #include "gfxPlatform.h"
 #include "mozilla/widget/ScreenManager.h"
@@ -195,7 +194,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
     mWidget->Destroy();
     mWidget = nullptr;
   }
-  Unused << SendDestroyed();
+  (void) SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
   return IPC_OK();
 }
@@ -205,7 +204,7 @@ EmbedLiteWindowChild::RecvLoadURL(const nsCString& aURL,
                                   const bool& aFromExternal)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->LoadURL(aURL, aFromExternal);
+    (void) mChromeSession->LoadURL(aURL, aFromExternal);
   }
   return IPC_OK();
 }
@@ -215,7 +214,7 @@ EmbedLiteWindowChild::RecvGoBack(const bool& aRequireUserInteraction,
                                  const bool& aUserActivation)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->GoBack(aRequireUserInteraction,
+    (void) mChromeSession->GoBack(aRequireUserInteraction,
                                      aUserActivation);
   }
   return IPC_OK();
@@ -226,7 +225,7 @@ EmbedLiteWindowChild::RecvGoForward(const bool& aRequireUserInteraction,
                                     const bool& aUserActivation)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->GoForward(aRequireUserInteraction,
+    (void) mChromeSession->GoForward(aRequireUserInteraction,
                                         aUserActivation);
   }
   return IPC_OK();
@@ -235,7 +234,7 @@ EmbedLiteWindowChild::RecvGoForward(const bool& aRequireUserInteraction,
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvStopLoad()
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->StopLoad();
+    (void) mChromeSession->StopLoad();
   }
   return IPC_OK();
 }
@@ -244,7 +243,7 @@ mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvReload(const bool& aHardReload)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->Reload(aHardReload);
+    (void) mChromeSession->Reload(aHardReload);
   }
   return IPC_OK();
 }
@@ -294,7 +293,7 @@ EmbedLiteWindowChild::RecvNewTab(const nsCString& aURL,
                                  const bool& aInBackground)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->NewTab(
+    (void) mChromeSession->NewTab(
       aURL, aPersistentId, aFromExternal, aInBackground);
   }
   return IPC_OK();
@@ -305,7 +304,7 @@ EmbedLiteWindowChild::RecvAssociateTab(const uint64_t& aTabId,
                                        const uint64_t& aPersistentId)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->AssociateTab(aTabId, aPersistentId);
+    (void) mChromeSession->AssociateTab(aTabId, aPersistentId);
   }
   return IPC_OK();
 }
@@ -314,7 +313,7 @@ mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvSelectTab(const uint64_t& aTabId)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->SelectTab(aTabId);
+    (void) mChromeSession->SelectTab(aTabId);
   }
   return IPC_OK();
 }
@@ -323,7 +322,7 @@ mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvCloseTab(const uint64_t& aTabId)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->CloseTab(aTabId);
+    (void) mChromeSession->CloseTab(aTabId);
   }
   return IPC_OK();
 }
@@ -342,54 +341,54 @@ EmbedLiteWindowChild::RecvResolveBeforeUnloadPrompt(
 
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvLoadContentFrameScript(
     const nsCString& aURI)
-{ if (aURI.IsEmpty() || aURI.Length() > 1024 * 1024) return IPC_FAIL(this, "Invalid frame script URI"); if (mChromeSession && !mDestroying) Unused << mChromeSession->LoadFrameScript(aURI); return IPC_OK(); }
+{ if (aURI.IsEmpty() || aURI.Length() > 1024 * 1024) return IPC_FAIL(this, "Invalid frame script URI"); if (mChromeSession && !mDestroying) (void) mChromeSession->LoadFrameScript(aURI); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvAddContentMessageListener(
     const nsCString& aName)
-{ if (aName.IsEmpty() || aName.Length() > 1024) return IPC_FAIL(this, "Invalid message name"); if (mChromeSession && !mDestroying) Unused << mChromeSession->AddMessageListener(aName); return IPC_OK(); }
+{ if (aName.IsEmpty() || aName.Length() > 1024) return IPC_FAIL(this, "Invalid message name"); if (mChromeSession && !mDestroying) (void) mChromeSession->AddMessageListener(aName); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvRemoveContentMessageListener(
     const nsCString& aName)
-{ if (aName.IsEmpty() || aName.Length() > 1024) return IPC_FAIL(this, "Invalid message name"); if (mChromeSession && !mDestroying) Unused << mChromeSession->RemoveMessageListener(aName); return IPC_OK(); }
+{ if (aName.IsEmpty() || aName.Length() > 1024) return IPC_FAIL(this, "Invalid message name"); if (mChromeSession && !mDestroying) (void) mChromeSession->RemoveMessageListener(aName); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSendContentAsyncMessage(
     const uint64_t& aTabId, const nsString& aName, const nsString& aJSON)
-{ if (!aTabId || aName.IsEmpty() || aName.Length() > 1024 || aJSON.Length() > 1024 * 1024) return IPC_FAIL(this, "Invalid content message"); if (mChromeSession && !mDestroying) Unused << mChromeSession->SendAsyncMessage(aTabId, aName, aJSON); return IPC_OK(); }
+{ if (!aTabId || aName.IsEmpty() || aName.Length() > 1024 || aJSON.Length() > 1024 * 1024) return IPC_FAIL(this, "Invalid content message"); if (mChromeSession && !mDestroying) (void) mChromeSession->SendAsyncMessage(aTabId, aName, aJSON); return IPC_OK(); }
 
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSendContentMouseEvent(
     const uint64_t& aTabId, const uint8_t& aType, const int32_t& aX,
     const int32_t& aY, const uint64_t& aTime, const uint32_t& aButton,
     const uint32_t& aButtons, const uint32_t& aModifiers,
     const uint32_t& aClickCount)
-{ if (!aTabId || aType > 2 || aButton > 4 || aButtons > 0x1f || aClickCount > 3) return IPC_FAIL(this, "Invalid content mouse event"); if (mChromeSession && !mDestroying) Unused << mChromeSession->SendMouseEvent(aTabId, aType, aX, aY, aTime, aButton, aButtons, aModifiers, aClickCount); return IPC_OK(); }
+{ if (!aTabId || aType > 2 || aButton > 4 || aButtons > 0x1f || aClickCount > 3) return IPC_FAIL(this, "Invalid content mouse event"); if (mChromeSession && !mDestroying) (void) mChromeSession->SendMouseEvent(aTabId, aType, aX, aY, aTime, aButton, aButtons, aModifiers, aClickCount); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSendContentWheelEvent(
     const uint64_t& aTabId, const int32_t& aX, const int32_t& aY,
     const uint64_t& aTime, const double& aDeltaX, const double& aDeltaY,
     const uint32_t& aDeltaMode, const uint32_t& aModifiers)
-{ if (!aTabId || !std::isfinite(aDeltaX) || !std::isfinite(aDeltaY) || aDeltaMode > 2) return IPC_FAIL(this, "Invalid content wheel event"); if (mChromeSession && !mDestroying) Unused << mChromeSession->SendWheelEvent(aTabId, aX, aY, aTime, aDeltaX, aDeltaY, aDeltaMode, aModifiers); return IPC_OK(); }
+{ if (!aTabId || !std::isfinite(aDeltaX) || !std::isfinite(aDeltaY) || aDeltaMode > 2) return IPC_FAIL(this, "Invalid content wheel event"); if (mChromeSession && !mDestroying) (void) mChromeSession->SendWheelEvent(aTabId, aX, aY, aTime, aDeltaX, aDeltaY, aDeltaMode, aModifiers); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvContentScrollTo(
     const uint64_t& aTabId, const int32_t& aX, const int32_t& aY)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->ScrollTo(aTabId, aX, aY); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->ScrollTo(aTabId, aX, aY); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvContentScrollBy(
     const uint64_t& aTabId, const int32_t& aX, const int32_t& aY)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->ScrollBy(aTabId, aX, aY); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->ScrollBy(aTabId, aX, aY); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvContentZoomToRect(
     const uint64_t& aTabId, const float& aX, const float& aY,
     const float& aWidth, const float& aHeight)
-{ if (!aTabId || !std::isfinite(aX) || !std::isfinite(aY) || !std::isfinite(aWidth) || aWidth < 0 || !std::isfinite(aHeight) || aHeight < 0) return IPC_FAIL(this, "Invalid content zoom rect"); if (mChromeSession && !mDestroying) Unused << mChromeSession->ZoomToRect(aTabId, aX, aY, aWidth, aHeight); return IPC_OK(); }
+{ if (!aTabId || !std::isfinite(aX) || !std::isfinite(aY) || !std::isfinite(aWidth) || aWidth < 0 || !std::isfinite(aHeight) || aHeight < 0) return IPC_FAIL(this, "Invalid content zoom rect"); if (mChromeSession && !mDestroying) (void) mChromeSession->ZoomToRect(aTabId, aX, aY, aWidth, aHeight); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentDesktopMode(const uint64_t& aTabId, const bool& aValue)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->SetDesktopMode(aTabId, aValue); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->SetDesktopMode(aTabId, aValue); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentThrottlePainting(const uint64_t& aTabId, const bool& aValue)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->SetThrottlePainting(aTabId, aValue); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->SetThrottlePainting(aTabId, aValue); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSuspendContentTimeouts(const uint64_t& aTabId)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->SuspendTimeouts(aTabId); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->SuspendTimeouts(aTabId); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvResumeContentTimeouts(const uint64_t& aTabId)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->ResumeTimeouts(aTabId); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->ResumeTimeouts(aTabId); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentHttpUserAgent(const uint64_t& aTabId, const nsString& aValue)
-{ if (aValue.Length() > 1024) return IPC_FAIL(this, "Invalid user agent"); if (mChromeSession && !mDestroying) Unused << mChromeSession->SetHttpUserAgent(aTabId, aValue); return IPC_OK(); }
+{ if (aValue.Length() > 1024) return IPC_FAIL(this, "Invalid user agent"); if (mChromeSession && !mDestroying) (void) mChromeSession->SetHttpUserAgent(aTabId, aValue); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentMargins(const uint64_t& aTabId, const int32_t& aTop, const int32_t& aRight, const int32_t& aBottom, const int32_t& aLeft)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->SetMargins(aTabId, aTop, aRight, aBottom, aLeft); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->SetMargins(aTabId, aTop, aRight, aBottom, aLeft); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentSafeAreaInsets(const uint64_t& aTabId, const int32_t& aTop, const int32_t& aRight, const int32_t& aBottom, const int32_t& aLeft)
-{ if (mChromeSession && !mDestroying) Unused << mChromeSession->SetSafeAreaInsets(aTabId, aTop, aRight, aBottom, aLeft); return IPC_OK(); }
+{ if (mChromeSession && !mDestroying) (void) mChromeSession->SetSafeAreaInsets(aTabId, aTop, aRight, aBottom, aLeft); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentDynamicToolbarHeight(const uint64_t& aTabId, const int32_t& aHeight)
-{ if (aHeight < 0) return IPC_FAIL(this, "Invalid toolbar height"); if (mChromeSession && !mDestroying) Unused << mChromeSession->SetDynamicToolbarHeight(aTabId, aHeight); return IPC_OK(); }
+{ if (aHeight < 0) return IPC_FAIL(this, "Invalid toolbar height"); if (mChromeSession && !mDestroying) (void) mChromeSession->SetDynamicToolbarHeight(aTabId, aHeight); return IPC_OK(); }
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentScreenProperties(const int32_t& aDepth, const float& aDensity, const float& aDpi)
 { if (aDepth <= 0 || !std::isfinite(aDensity) || aDensity <= 0 || !std::isfinite(aDpi) || aDpi <= 0) return IPC_FAIL(this, "Invalid screen properties"); SetScreenProperties(aDepth, aDensity, aDpi); return IPC_OK(); }
 
@@ -397,7 +396,7 @@ mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvSetActive(const bool& aActive)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->SetActive(aActive);
+    (void) mChromeSession->SetActive(aActive);
   }
   return IPC_OK();
 }
@@ -406,7 +405,7 @@ mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvSetFocused(const bool& aFocused)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->SetFocused(aFocused);
+    (void) mChromeSession->SetFocused(aFocused);
   }
   return IPC_OK();
 }
@@ -421,7 +420,7 @@ EmbedLiteWindowChild::RecvHandleTextEvent(
     return IPC_FAIL(this, "Invalid chrome text replacement length");
   }
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->SendTextEvent(
+    (void) mChromeSession->SendTextEvent(
       NS_ConvertUTF8toUTF16(aCommit), NS_ConvertUTF8toUTF16(aPreEdit),
       aReplacementStart, aReplacementLength);
   }
@@ -437,7 +436,7 @@ EmbedLiteWindowChild::RecvHandleKeyPressEvent(
     return IPC_FAIL(this, "Invalid chrome key press");
   }
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->SendKeyPress(
+    (void) mChromeSession->SendKeyPress(
       aDomKeyCode, aModifiers, aCharCode);
   }
   return IPC_OK();
@@ -452,7 +451,7 @@ EmbedLiteWindowChild::RecvHandleKeyReleaseEvent(
     return IPC_FAIL(this, "Invalid chrome key release");
   }
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->SendKeyRelease(
+    (void) mChromeSession->SendKeyRelease(
       aDomKeyCode, aModifiers, aCharCode);
   }
   return IPC_OK();
@@ -462,7 +461,7 @@ mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvReceiveInputEvent(const MultiTouchInput& aEvent)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
-    Unused << mChromeSession->ReceiveInputEvent(aEvent);
+    (void) mChromeSession->ReceiveInputEvent(aEvent);
   }
   return IPC_OK();
 }
@@ -475,7 +474,7 @@ void EmbedLiteWindowChild::ChromeInputContextChanged(
     return;
   }
 
-  Unused << SendOnInputContextChanged(
+  (void) SendOnInputContextChanged(
     static_cast<int32_t>(aContext.mIMEState.mEnabled),
     static_cast<int32_t>(aContext.mIMEState.mOpen),
     aContext.mHTMLInputType, aContext.mHTMLInputMode, aContext.mActionHint,
@@ -577,10 +576,10 @@ void EmbedLiteWindowChild::CreateWidget()
   // nsWindow::CreateCompositor() reads back Size
   // when it creates the compositor.
   const nsresult createResult =
-    mWidget->Create(nullptr, mBounds, &widgetInit);
+    mWidget->Create(nullptr, mBounds, widgetInit);
   if (NS_FAILED(createResult)) {
     mInitialized = true;
-    Unused << SendInitialized(false);
+    (void) SendInitialized(false);
     RecvDestroy();
     return;
   }
@@ -609,7 +608,7 @@ EmbedLiteWindowChild::ChromeSessionInitializationFinished(bool aSuccess)
     return;
   }
 
-  Unused << SendInitialized(aSuccess);
+  (void) SendInitialized(aSuccess);
   if (!aSuccess) {
     RecvDestroy();
   }
@@ -691,7 +690,7 @@ void EmbedLiteWindowChild::DestroyChromeAppWindow()
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mChromeWindow);
   if (baseWindow) {
-    Unused << baseWindow->Destroy();
+    (void) baseWindow->Destroy();
   }
   mChromeWindow = nullptr;
 }
@@ -710,7 +709,8 @@ void EmbedLiteWindowChild::RefreshScreen()
   auto screen = MakeRefPtr<widget::Screen>(
       rect, rect, mDepth, mDepth, 0, DesktopToLayoutDeviceScale(density),
       CSSToLayoutDeviceScale(density), mDpi,
-      widget::Screen::IsPseudoDisplay::No, widget::Screen::IsHDR::No);
+      widget::Screen::IsPseudoDisplay::No, widget::Screen::IsHDR::No,
+      80.0f, 80.0f);
   screenList.AppendElement(screen.forget());
   widget::ScreenManager::Refresh(std::move(screenList));
 }

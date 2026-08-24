@@ -11,7 +11,6 @@
 #include "EmbedLiteChromeTabSession.h"
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "EmbedLiteWindowParent.h"
-#include "mozilla/Unused.h"
 
 #include <set>
 
@@ -53,7 +52,7 @@ EmbedLiteWindow::~EmbedLiteWindow()
 
 void EmbedLiteWindow::Destroy()
 {
-  Unused << mWindowParent->SendDestroy();
+  (void) mWindowParent->SendDestroy();
 }
 
 void EmbedLiteWindow::Destroyed()

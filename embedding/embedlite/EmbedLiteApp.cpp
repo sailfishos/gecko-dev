@@ -11,7 +11,6 @@
 #include "nsISupports.h"
 #include "nsIFile.h"
 #include "base/at_exit.h"
-#include "mozilla/Unused.h"
 #include "base/message_loop.h"               // for MessageLoop
 
 #include "mozilla/embedlite/EmbedLiteAPI.h"
@@ -260,7 +259,7 @@ void
 EmbedLiteApp::AddManifestLocation(const char* manifest)
 {
   if (mState == INITIALIZED) {
-    Unused << mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
+    (void)mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
   } else {
     sComponentDirs.AppendElement(nsCString(manifest));
   }
@@ -344,7 +343,7 @@ EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
     LOGE("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!app->mAppParent is null, wrong logic?");
     return;
   }
-  Unused << app->mAppParent->SendPreDestroy();
+  (void)app->mAppParent->SendPreDestroy();
 }
 
 void
@@ -431,21 +430,21 @@ EmbedLiteApp::SetBoolPref(const char* aName, bool aValue)
 {
   NS_ENSURE_TRUE(mState == INITIALIZED, );
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
+  (void)mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
 }
 
 void
 EmbedLiteApp::SetCharPref(const char* aName, const char* aValue)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
+  (void)mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
 }
 
 void
 EmbedLiteApp::SetIntPref(const char* aName, int aValue)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
+  (void)mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
 }
 
 void
@@ -453,7 +452,7 @@ EmbedLiteApp::LoadGlobalStyleSheet(const char* aUri, bool aEnable)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
+  (void)mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
 }
 
 void
@@ -461,7 +460,7 @@ EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
   NS_ENSURE_TRUE(mState == INITIALIZED, );
-  Unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
+  (void)mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
 void
@@ -469,7 +468,7 @@ EmbedLiteApp::AddObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendAddObserver(nsDependentCString(aMessageName));
+  (void)mAppParent->SendAddObserver(nsDependentCString(aMessageName));
 }
 
 void
@@ -477,7 +476,7 @@ EmbedLiteApp::RemoveObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
+  (void)mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
 }
 
 void EmbedLiteApp::AddObservers(const std::vector<std::string> &observersList)
@@ -489,7 +488,7 @@ void EmbedLiteApp::AddObservers(const std::vector<std::string> &observersList)
       list.AppendElement(nsDependentCString(observer.c_str()));
   }
 
-  Unused << mAppParent->SendAddObservers(list);
+  (void)mAppParent->SendAddObservers(list);
 }
 
 void EmbedLiteApp::RemoveObservers(const std::vector<std::string>& observersList)
@@ -501,7 +500,7 @@ void EmbedLiteApp::RemoveObservers(const std::vector<std::string>& observersList
       list.AppendElement(nsDependentCString(observer.c_str()));
   }
 
-  Unused << mAppParent->SendRemoveObservers(list);
+  (void)mAppParent->SendRemoveObservers(list);
 }
 
 EmbedLiteView*
@@ -738,7 +737,7 @@ void EmbedLiteApp::DestroySecurity(EmbedLiteSecurity* aSecurity) const
 void
 EmbedLiteApp::SetIsAccelerated(bool aIsAccelerated)
 {
-#if defined(GL_PROVIDER_EGL) || defined(GL_PROVIDER_GLX)
+#ifdef MOZ_GL_PROVIDER
   if (aIsAccelerated) {
     mRenderType = RENDER_HW;
   } else

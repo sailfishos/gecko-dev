@@ -10,7 +10,6 @@
 #include "mozilla/AppShutdown.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
-#include "mozilla/Unused.h"
 
 #include <stdio.h>
 #include "nscore.h"
@@ -105,13 +104,11 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   IOInterposer::Init();
 #endif
 
-  // Android FF is using baseprofiler, I'm not sure if we'd benefit of it.
-  // This call must happen before any other profiler calls and main thread
+  // The Gecko profiler is unconditional since MOZ_GECKO_PROFILER was removed.
+  // This call must happen before any other profiler calls and the main thread
   // must be set. See GeckoProfiler.h.
-#ifdef MOZ_GECKO_PROFILER
   char aLocal;
   profiler_init(&aLocal);
-#endif
 
   const char* greHome = getenv("GRE_HOME");
   if (!greHome) {
@@ -195,7 +192,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     bool dirExists = true;
     rv = kDirectoryProvider.sProfileDir->Exists(&dirExists);
     if (!dirExists) {
-      mozilla::Unused << kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+      (void) kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
     }
 
     // Lock profile directory
@@ -288,10 +285,8 @@ GeckoLoader::TermEmbedding()
 
   NS_ShutdownXPCOM(nullptr);
 
-#ifdef MOZ_GECKO_PROFILER
   // This must precede NS_LogTerm().
   profiler_shutdown();
-#endif
 
   NS_LogTerm();
 

@@ -11,7 +11,6 @@
 #include "nsWindow.h"
 
 #include "nsIURIMutator.h"
-#include "mozilla/Unused.h"
 #include "mozilla/TextControlElement.h"
 #include "mozilla/ScopeExit.h"
 
@@ -170,7 +169,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
   mChrome = nullptr;
   mDOMWindow = nullptr;
   mWebNavigation = nullptr;
-  Unused << SendDestroyed();
+  (void) SendDestroyed();
   PEmbedLiteViewChild::Send__delete__(this);
   return IPC_OK();
 }
@@ -204,7 +203,7 @@ void EmbedLiteViewChild::InitGeckoWindow()
   }
 
   if (mDestroyAfterInit) {
-    Unused << RecvDestroy();
+    (void) RecvDestroy();
     return;
   }
 
@@ -220,7 +219,7 @@ void EmbedLiteViewChild::InitGeckoWindow()
 
   LayoutDeviceIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
   nsresult rv =
-    mWidget->Create(mWindow->GetWidget(), naturalBounds, &widgetInit);
+    mWidget->Create(mWindow->GetWidget(), naturalBounds, widgetInit);
 
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
@@ -355,7 +354,7 @@ void EmbedLiteViewChild::InitGeckoWindow()
 
   mInitialized = true;
 
-  Unused << SendInitialized();
+  (void) SendInitialized();
 
   nsCOMPtr<nsIObserverService> observerService =
           do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -614,7 +613,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
     return IPC_OK();
   }
 
-  Unused << docShell->GetBrowsingContext()->SetExplicitActive(
+  (void) docShell->GetBrowsingContext()->SetExplicitActive(
     aIsActive ? dom::ExplicitActiveStatus::Active
               : dom::ExplicitActiveStatus::Inactive
   );
@@ -761,7 +760,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetDynamicToolbarHeight(const int &aHeight)
 {
   mHelper->DynamicToolbarMaxHeightChanged(aHeight);
-  Unused << SendDynamicToolbarHeightChanged(aHeight);
+  (void) SendDynamicToolbarHeightChanged(aHeight);
   return IPC_OK();
 }
 
@@ -797,7 +796,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int &aTop, cons
     }
   }
 
-  Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
+  (void) SendMarginsChanged(aTop, aRight, aBottom, aLeft);
   return IPC_OK();
 }
 
@@ -1205,9 +1204,8 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString &
   NS_ENSURE_TRUE(widget && (ctx.mIMEState.mEnabled != IMEEnabled::Disabled), IPC_OK());
 
   if (replacementLength > 0) {
-    nsEventStatus status;
     WidgetQueryContentEvent selection(true, eQuerySelectedText, widget);
-    widget->DispatchEvent(&selection, status);
+    widget->DispatchEvent(&selection);
 
     if (selection.Succeeded()) {
       // Set selection to delete
@@ -1216,12 +1214,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString &
       selectionEvent.mLength = replacementLength;
       selectionEvent.mReversed = false;
       selectionEvent.mExpandToClusterBoundary = false;
-      widget->DispatchEvent(&selectionEvent, status);
+      widget->DispatchEvent(&selectionEvent);
 
       if (selectionEvent.mSucceeded) {
         // Delete the selection
         WidgetContentCommandEvent deleteCommandEvent(true, eContentCommandDelete, widget);
-        widget->DispatchEvent(&deleteCommandEvent, status);
+        widget->DispatchEvent(&deleteCommandEvent);
       }
     }
   }
@@ -1290,7 +1288,7 @@ static KeyNameIndex getKeyNameIndexByDomKeyCode(int domKeyCode)
 #define KEY(key_, _codeNameIdx, _keyCode, _modifier)
 #define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode) \
   if (domKeyCode == _keyCode) return KEY_NAME_INDEX_##keyNameIdx_;
-#include "KeyCodeConsensus_En_US.h"
+#include "KeyCodeConsensus_En_US.inc"
   return KEY_NAME_INDEX_USE_STRING;
 #undef CONTROL
 #undef KEY
@@ -1302,7 +1300,7 @@ static CodeNameIndex getCodeNameIndexByCharCode(int charCode)
 #define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
   case key_[0]: return CODE_NAME_INDEX_##_codeNameIdx;
 #define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
-#include "KeyCodeConsensus_En_US.h"
+#include "KeyCodeConsensus_En_US.inc"
     default: return CODE_NAME_INDEX_UNKNOWN;
 #undef CONTROL
 #undef KEY
@@ -1315,7 +1313,7 @@ static Modifiers getModifiersByCharCode(int charCode)
 #define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
   case key_[0]: return _modifier;
 #define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
-#include "KeyCodeConsensus_En_US.h"
+#include "KeyCodeConsensus_En_US.inc"
     default: return 0;
 #undef CONTROL
 #undef KEY
@@ -1341,8 +1339,8 @@ nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const Even
     // Needed for multiline editing
     event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
   }
-  nsEventStatus status;
-  return widget->DispatchEvent(&event, status);
+  widget->DispatchEvent(&event);
+  return NS_OK;
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyPressEvent(const int &domKeyCode,
@@ -1533,7 +1531,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyFlushComplete()
 NS_IMETHODIMP
 EmbedLiteViewChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
 {
-  Unused << aIsSameDocument;
+  (void) aIsSameDocument;
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -1595,8 +1593,8 @@ EmbedLiteViewChild::OnFirstPaint(int32_t aX, int32_t aY)
     if (docShell) {
       RefPtr<PresShell> presShell = docShell->GetPresShell();
       if (presShell) {
-        nscolor bgcolor = presShell->GetCanvasBackground();
-        Unused << SendSetBackgroundColor(bgcolor);
+        nscolor bgcolor = presShell->GetViewportCanvasBackground().mColor;
+        (void) SendSetBackgroundColor(bgcolor);
       }
     }
   }

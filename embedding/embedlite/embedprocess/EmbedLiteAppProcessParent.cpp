@@ -10,7 +10,6 @@
 #if defined(ANDROID) || defined(LINUX)
 #include "nsSystemInfo.h"
 #endif
-#include "mozilla/Unused.h"
 #if defined(ANDROID) || defined(LINUX)
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -220,12 +219,12 @@ EmbedLiteAppProcessParent::AllocPEmbedLiteWindowParent(
     const uintptr_t &aListener, const bool &chromeHosted,
     const nsCString &initialContentURI)
 {
-  Unused << width;
-  Unused << height;
-  Unused << id;
-  Unused << aListener;
-  Unused << chromeHosted;
-  Unused << initialContentURI;
+  (void) width;
+  (void) height;
+  (void) id;
+  (void) aListener;
+  (void) chromeHosted;
+  (void) initialContentURI;
   LOGNI();
 
   return nullptr;

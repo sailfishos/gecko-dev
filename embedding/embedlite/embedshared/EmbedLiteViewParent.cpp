@@ -13,7 +13,6 @@
 
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "base/message_loop.h"
-#include "mozilla/Unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZThreadUtils.h"
 
@@ -468,9 +467,9 @@ EmbedLiteViewParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 
   if (multiTouchInput.mInputType == MULTITOUCH_INPUT) {
     if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-      Unused << SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
+      (void) SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
     } else {
-      Unused << SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
+      (void) SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
     }
   }
   return NS_OK;
@@ -485,7 +484,7 @@ EmbedLiteViewParent::TextEvent(const char *composite, const char *preEdit, const
 
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
   if (mLastIMEState) {
-    Unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
+    (void) SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
                                   NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)),
                                   replacementStart,
                                   replacementLength);
@@ -512,7 +511,7 @@ NS_IMETHODIMP
 EmbedLiteViewParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
-  Unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
+  (void) SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
 
   return NS_OK;
 }
@@ -521,7 +520,7 @@ NS_IMETHODIMP
 EmbedLiteViewParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
-  Unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
+  (void) SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
 
   return NS_OK;
 }
@@ -542,7 +541,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(u"mousedown"_ns,
+  (void) SendMouseEvent(u"mousedown"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -564,11 +563,11 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(u"mouseup"_ns,
+  (void) SendMouseEvent(u"mouseup"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   if (buttons == 0) {
-    Unused << SendMouseEvent(u"click"_ns,
+    (void) SendMouseEvent(u"click"_ns,
                              x, y, buttons, 1, modifiers,
                              true);
   }
@@ -591,7 +590,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(u"mousemove"_ns,
+  (void) SendMouseEvent(u"mousemove"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;

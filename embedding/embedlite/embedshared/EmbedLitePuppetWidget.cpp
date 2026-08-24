@@ -23,7 +23,6 @@
 #endif
 
 #include "EmbedLiteApp.h"
-#include "mozilla/Unused.h"
 #include "mozilla/BasicEvents.h"
 
 #include <sys/syscall.h>
@@ -74,7 +73,7 @@ EmbedLitePuppetWidget::CreateForChromeHost(nsIWidget* aHost)
 nsresult
 EmbedLitePuppetWidget::Create(nsIWidget* aParent,
                               const LayoutDeviceIntRect& aRect,
-                              widget::InitData* aInitData)
+                              const widget::InitData& aInitData)
 {
   nsCOMPtr<nsIWidget> chromeHost = mPendingChromeHost;
   mPendingChromeHost = nullptr;
@@ -82,15 +81,13 @@ EmbedLitePuppetWidget::Create(nsIWidget* aParent,
 
   if (chromeHost) {
     if (aParent ||
-        (aInitData &&
-         aInitData->mWindowType == widget::WindowType::Popup)) {
+        aInitData.mWindowType == widget::WindowType::Popup) {
       MOZ_ASSERT_UNREACHABLE(
         "A hosted chrome window must be a parentless top-level widget");
       return NS_ERROR_INVALID_ARG;
     }
     aParent = chromeHost;
-  } else if (aInitData &&
-             aInitData->mWindowType == widget::WindowType::Popup) {
+  } else if (aInitData.mWindowType == widget::WindowType::Popup) {
     aParent = nullptr;
   }
   nsresult rv = PuppetWidgetBase::Create(aParent, aRect, aInitData);
@@ -104,7 +101,7 @@ EmbedLitePuppetWidget::Create(nsIWidget* aParent,
 }
 
 already_AddRefed<nsIWidget>
-EmbedLitePuppetWidget::AllocateChildPuppetWidget(widget::InitData&)
+EmbedLitePuppetWidget::AllocateChildPuppetWidget(const widget::InitData&)
 {
   if (Destroyed()) {
     return nullptr;
@@ -168,22 +165,15 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
   return nullptr;
 }
 
-nsresult
-EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
+nsEventStatus
+EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event)
 {
   if (Destroyed()) {
-    return NS_OK;
+    return nsEventStatus_eIgnore;
   }
 
   LOGT();
   MOZ_ASSERT(event);
-  aStatus = nsEventStatus_eIgnore;
-
-  nsIWidgetListener* listener =
-    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
-
-  NS_ASSERTION(listener, "No listener!");
-
   if (event->mClass == eKeyboardEventClass && mView) {
     RemoveIMEComposition();
   } else if (event->mClass == eCompositionEventClass) {
@@ -204,11 +194,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
      mNativeIMEContext = compositionEvent->mNativeIMEContext;
   }
 
-  if (listener) {
-    aStatus = listener->HandleEvent(event, mUseAttachedEvents);
-  } else {
-    aStatus = nsEventStatus_eIgnore;
-  }
+  nsEventStatus status = nsIWidget::DispatchEvent(event);
 
   switch (event->mMessage) {
     case eCompositionStart:
@@ -231,7 +217,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
       break;
   }
 
-  return NS_OK;
+  return status;
 }
 
 void
@@ -330,12 +316,11 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
   WidgetCompositionEvent textEvent(true, eCompositionChange, this);
   textEvent.mTimeStamp = TimeStamp::Now();
   textEvent.mData = mIMEComposingText;
-  nsEventStatus status;
-  DispatchEvent(&textEvent, status);
+  DispatchEvent(&textEvent);
 
   WidgetCompositionEvent event(true, eCompositionEnd, this);
   event.mTimeStamp = TimeStamp::Now();
-  DispatchEvent(&event, status);
+  DispatchEvent(&event);
 }
 
 EmbedLitePuppetWidget *

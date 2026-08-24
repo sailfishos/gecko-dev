@@ -16,12 +16,12 @@
 #include "nsAppRunner.h"
 #include "nsXULAppAPI.h"
 #include "nsString.h"
+#include "mozilla/HelperMacros.h"
 #include "EmbedLiteAppThreadChild.h"
 
 #include "application.ini.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/PreferenceSheet.h"
-#include "mozilla/Unused.h"
 
 #if defined(ACCESSIBILITY)
 #include "nsAccessibilityService.h"
@@ -88,6 +88,16 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetName(nsACString& aName)
 {
   aName.Assign("EmbedLiteApp");
   return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetRemotingName(nsACString& aRemotingName)
+{
+  nsCOMPtr<nsIXULAppInfo> appInfo;
+  nsresult rv = mozilla::AppInfoConstructor(
+      NS_GET_IID(nsIXULAppInfo), getter_AddRefs(appInfo));
+  NS_ENSURE_SUCCESS(rv, rv);
+  return appInfo->GetRemotingName(aRemotingName);
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetUAName(nsACString& aUAName)
@@ -231,13 +241,6 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatusString(nsACString& aF
       aFissionDecisionStatusString);
 }
 
-/* readonly attribute boolean sessionHistoryInParent; */
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetSessionHistoryInParent(bool *aSessionHistoryInParent)
-{
-  *aSessionHistoryInParent = mozilla::SessionHistoryInParent();
-  return NS_OK;
-}
-
 /* readonly attribute AString processStartupShortcut; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetProcessStartupShortcut(nsAString& aProcessStartupShortcut)
 {
@@ -258,6 +261,11 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::SetLogConsoleErrors(bool aLogConsoleErrors)
 NS_IMETHODIMP EmbedLiteXulAppInfo::InvalidateCachesOnRestart()
 {
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::MarkProfileEncryptedDatabases()
+{
+  return mozilla::MarkProfileEncryptedDatabases();
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetReplacedLockTime(PRTime* aReplacedLockTime)

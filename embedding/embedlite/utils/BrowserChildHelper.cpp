@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EmbedLog.h"
+#include "nsPIDOMWindowInlines.h"
 
 #include "nsIWidget.h"
 
@@ -13,7 +14,6 @@
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/SchedulerGroup.h"
-#include "mozilla/Unused.h"
 #include "mozilla/layers/InputAPZContext.h"
 
 #include "mozilla/dom/ChromeMessageSender.h"
@@ -36,7 +36,6 @@
 #include "nsThreadUtils.h" // for mozilla::Runnable
 #include "mozilla/Preferences.h"
 #include "nsIFrame.h"
-#include "nsView.h"
 #include "nsLayoutUtils.h"
 #include "APZCCallbackHelper.h"
 #include "EmbedFrame.h"
@@ -653,7 +652,7 @@ BrowserChildHelper::GetWidget(nsPoint* aOffset)
   NS_ENSURE_TRUE(presShell, nullptr);
   nsIFrame* frame = presShell->GetRootFrame();
   if (frame) {
-    return frame->GetView()->GetWidget();
+    return frame->GetNearestWidget();
   }
 
   return nullptr;

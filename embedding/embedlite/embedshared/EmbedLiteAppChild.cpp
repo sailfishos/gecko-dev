@@ -25,7 +25,6 @@
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteWindowChild.h"
 #include "EmbedLiteWindowThreadChild.h"
-#include "mozilla/Unused.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 
 using namespace mozilla::ipc;
@@ -66,7 +65,7 @@ EmbedLiteAppChild::Observe(nsISupports* aSubject,
                            const char16_t* aData)
 {
   LOGF("topic:%s", aTopic);
-  Unused << SendObserve(nsDependentCString(aTopic), aData ? nsDependentString(aData) : nsString());
+  (void) SendObserve(nsDependentCString(aTopic), aData ? nsDependentString(aData) : nsString());
   return NS_OK;
 }
 

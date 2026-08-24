@@ -122,8 +122,7 @@ class CountingWidgetListener final : public nsIWidgetListener
 public:
   void WindowActivated() override { ++mActivatedCount; }
   void WindowDeactivated() override { ++mDeactivatedCount; }
-  void WillPaintWindow(nsIWidget*) override { ++mWillPaintCount; }
-  void DidPaintWindow() override { ++mDidPaintCount; }
+  void PaintWindow(nsIWidget*) override { ++mPaintCount; }
   nsEventStatus HandleEvent(mozilla::WidgetGUIEvent* aEvent, bool) override
   {
     ++mEventCount;
@@ -134,8 +133,7 @@ public:
 
   int mActivatedCount = 0;
   int mDeactivatedCount = 0;
-  int mWillPaintCount = 0;
-  int mDidPaintCount = 0;
+  int mPaintCount = 0;
   int mEventCount = 0;
   nsTArray<mozilla::EventMessage> mMessages;
   nsIWidget* mLastEventWidget = nullptr;
@@ -178,7 +176,7 @@ TEST(EmbedLiteChromeWindowHostTest, HostedWidgetStartsHidden)
   hostInit.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &hostInit), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, hostInit), NS_OK);
   ASSERT_TRUE(host->IsVisible());
 
   AutoEmbedLiteChromeWindowHost reservation(host);
@@ -189,7 +187,7 @@ TEST(EmbedLiteChromeWindowHostTest, HostedWidgetStartsHidden)
 
   InitData hostedInit;
   hostedInit.mWindowType = WindowType::TopLevel;
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &hostedInit), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, hostedInit), NS_OK);
   EXPECT_FALSE(hosted->IsVisible());
 
   hosted->Show(true);
@@ -305,19 +303,15 @@ TEST(EmbedLiteChromeWindowHostTest, InvalidateUsesAttachedListener)
   widget->SetAttachedWidgetListener(&attachedListener);
   widget->Invalidate(LayoutDeviceIntRect(0, 0, 100, 100));
 
-  EXPECT_EQ(primaryListener.mWillPaintCount, 0);
-  EXPECT_EQ(primaryListener.mDidPaintCount, 0);
-  EXPECT_EQ(attachedListener.mWillPaintCount, 0);
-  EXPECT_EQ(attachedListener.mDidPaintCount, 0);
+  EXPECT_EQ(primaryListener.mPaintCount, 0);
+  EXPECT_EQ(attachedListener.mPaintCount, 0);
 
   ASSERT_TRUE(mozilla::SpinEventLoopUntil(
     "EmbedLiteChromeWindowHostTest::InvalidateUsesAttachedListener"_ns,
-    [&]() { return attachedListener.mDidPaintCount == 1; }));
+    [&]() { return attachedListener.mPaintCount == 1; }));
 
-  EXPECT_EQ(primaryListener.mWillPaintCount, 0);
-  EXPECT_EQ(primaryListener.mDidPaintCount, 0);
-  EXPECT_EQ(attachedListener.mWillPaintCount, 1);
-  EXPECT_EQ(attachedListener.mDidPaintCount, 1);
+  EXPECT_EQ(primaryListener.mPaintCount, 0);
+  EXPECT_EQ(attachedListener.mPaintCount, 1);
 
   widget->SetAttachedWidgetListener(nullptr);
   widget->SetWidgetListener(nullptr);
@@ -360,20 +354,18 @@ TEST(EmbedLiteChromeWindowHostTest, InputUsesHostedAttachedListener)
   init.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
 
   AutoEmbedLiteChromeWindowHost reservation(host);
   nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
   ASSERT_NE(hosted, nullptr);
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
   host->InitializeChromeInput();
 
   CountingWidgetListener hostedListener;
   hosted->SetAttachedWidgetListener(&hostedListener);
   mozilla::WidgetTouchEvent event(true, mozilla::eTouchStart, host);
-  nsEventStatus status = nsEventStatus_eIgnore;
-  ASSERT_EQ(host->DispatchEvent(&event, status), NS_OK);
-  EXPECT_EQ(status, nsEventStatus_eConsumeDoDefault);
+  EXPECT_EQ(host->DispatchEvent(&event), nsEventStatus_eConsumeDoDefault);
   EXPECT_EQ(hostedListener.mEventCount, 1);
   EXPECT_EQ(event.mWidget.get(), hosted.get());
 
@@ -389,12 +381,12 @@ TEST(EmbedLiteChromeWindowHostTest, PageInsetsUseHostedRootWidget)
   init.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
 
   AutoEmbedLiteChromeWindowHost reservation(host);
   nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
   ASSERT_NE(hosted, nullptr);
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
   host->InitializeChromeInput();
 
   EXPECT_TRUE(host->SetChromeMargins(
@@ -416,12 +408,12 @@ TEST(EmbedLiteChromeWindowHostTest, FocusCallbacksAreDeduplicated)
   init.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
 
   AutoEmbedLiteChromeWindowHost reservation(host);
   nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
   ASSERT_NE(hosted, nullptr);
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
   host->InitializeChromeInput();
 
   CountingWidgetListener primaryListener;
@@ -455,12 +447,12 @@ TEST(EmbedLiteChromeWindowHostTest, KeyboardUsesTextEventDispatcher)
   init.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
 
   AutoEmbedLiteChromeWindowHost reservation(host);
   nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
   ASSERT_NE(hosted, nullptr);
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
 
   CountingWidgetListener hostedListener;
   hosted->SetAttachedWidgetListener(&hostedListener);
@@ -487,12 +479,12 @@ TEST(EmbedLiteChromeWindowHostTest, PreeditAndCommitUseCompositionEvents)
   init.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
 
   AutoEmbedLiteChromeWindowHost reservation(host);
   nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
   ASSERT_NE(hosted, nullptr);
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
   host->InitializeChromeInput();
 
   CountingWidgetListener hostedListener;
@@ -528,12 +520,12 @@ TEST(EmbedLiteChromeWindowHostTest, IMERequestsEndComposition)
   init.mWindowType = WindowType::TopLevel;
 
   RefPtr<nsWindow> host = new nsWindow(nullptr);
-  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
 
   AutoEmbedLiteChromeWindowHost reservation(host);
   nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
   ASSERT_NE(hosted, nullptr);
-  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
   host->InitializeChromeInput();
 
   CountingWidgetListener hostedListener;

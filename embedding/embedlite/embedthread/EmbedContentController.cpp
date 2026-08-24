@@ -6,7 +6,6 @@
 #include "EmbedContentController.h"
 #include "EmbedLog.h"
 #include "EmbedLiteView.h"
-#include "mozilla/Unused.h"
 #include "EmbedLiteViewParent.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "EmbedLiteCompositorBridgeParent.h"
@@ -102,7 +101,7 @@ void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
   }
 
   if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleDoubleTap(
+    (void) mRenderFrame->SendHandleDoubleTap(
         aPoint, aModifiers, aGuid, aInputBlockId, aDoubleTapToZoomMetrics);
   }
 }
@@ -129,7 +128,7 @@ void EmbedContentController::HandleSecondTap(const LayoutDevicePoint aPoint,
   }
 
   if (mRenderFrame) {
-    Unused << mRenderFrame->SendHandleSecondTap(aPoint, aModifiers, aGuid,
+    (void) mRenderFrame->SendHandleSecondTap(aPoint, aModifiers, aGuid,
                                                 aInputBlockId);
   }
 }
@@ -156,7 +155,7 @@ void EmbedContentController::HandleSingleTap(const LayoutDevicePoint aPoint,
   }
 
   if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
+    (void) mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
   }
 }
 
@@ -179,7 +178,7 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
   }
 
   if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleLongTap(aPoint, aModifiers, aGuid,
+    (void) mRenderFrame->SendHandleLongTap(aPoint, aModifiers, aGuid,
                                               aInputBlockId);
   }
 }
@@ -217,7 +216,7 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
   gfxSize size(scrollableRect.width, scrollableRect.height);
 
   if (mRenderFrame && !GetListener()->HandleScrollEvent(rect, size)) {
-    Unused << mRenderFrame->SendHandleScrollEvent(rect, size);
+    (void) mRenderFrame->SendHandleScrollEvent(rect, size);
   }
 }
 
@@ -253,7 +252,7 @@ void EmbedContentController::DoRequestContentRepaint(const layers::RepaintReques
   LOGT("render frame %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
     DoSendScrollEvent(aRequest);
-    Unused << mRenderFrame->SendUpdateFrame(aRequest);
+    (void) mRenderFrame->SendUpdateFrame(aRequest);
   }
 }
 
@@ -273,7 +272,7 @@ void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::Scrolla
 
   LOGT("render frame: %p", mRenderFrame);
   if (mRenderFrame) {
-    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange,
+    (void) mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange,
                                                      aArg, aInputBlockId);
   }
 }
@@ -289,7 +288,7 @@ void EmbedContentController::NotifyFlushComplete()
   }
 
   if (mRenderFrame) {
-    Unused << mRenderFrame->SendNotifyFlushComplete();
+    (void) mRenderFrame->SendNotifyFlushComplete();
   }
 }
 

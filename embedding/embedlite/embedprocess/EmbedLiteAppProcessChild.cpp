@@ -14,7 +14,6 @@
 #include "EmbedLog.h"
 
 #include "EmbedLiteAppProcessChild.h"
-#include "mozilla/Unused.h"
 #include "nsThreadManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIConsoleService.h"
@@ -142,7 +141,7 @@ EmbedLiteAppProcessChild::InitXPCOM()
     observerService->NotifyObservers(nullptr, "embedliteInitialized", nullptr);
   }
 
-  Unused << SendInitialized();
+  (void) SendInitialized();
 
   nsTArray<mozilla::dom::Pref> prefs;
 
@@ -189,12 +188,12 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(
     const uintptr_t &aListener, const bool &chromeHosted,
     const nsCString &initialContentURI)
 {
-  Unused << width;
-  Unused << height;
-  Unused << id;
-  Unused << aListener;
-  Unused << chromeHosted;
-  Unused << initialContentURI;
+  (void) width;
+  (void) height;
+  (void) id;
+  (void) aListener;
+  (void) chromeHosted;
+  (void) initialContentURI;
   LOGNI();
   return nullptr;
 }

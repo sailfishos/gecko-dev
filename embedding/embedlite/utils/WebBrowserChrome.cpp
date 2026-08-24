@@ -11,6 +11,7 @@
 #include "nsIDocShell.h"
 #include "nsIOService.h"
 #include "nsIWebProgress.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsPIDOMWindow.h"
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
@@ -694,7 +695,7 @@ nsresult WebBrowserChrome::GetHttpUserAgent(nsIRequest* request, nsAString& aHtt
 
   nsAutoCString tCspUserAgent;
   if (httpChannel) {
-    Unused << httpChannel->GetRequestHeader(
+    (void) httpChannel->GetRequestHeader(
         "User-Agent"_ns, tCspUserAgent);
   }
 

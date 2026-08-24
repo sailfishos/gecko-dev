@@ -20,7 +20,7 @@
 
 class nsIAppWindow;
 class nsIBrowserDOMWindow;
-class nsIContentSecurityPolicy;
+class nsIPolicyContainer;
 class nsIOpenURIInFrameParams;
 class nsIOpenWindowInfo;
 class nsIPrincipal;
@@ -201,13 +201,13 @@ private:
   nsresult OpenTabFromBrowserDOMWindow(
     nsIURI* aURI, nsIOpenWindowInfo* aOpenWindowInfo,
     nsIReferrerInfo* aReferrerInfo, nsIPrincipal* aTriggeringPrincipal,
-    nsIContentSecurityPolicy* aCsp, const nsAString& aName,
+    nsIPolicyContainer* aPolicyContainer, const nsAString& aName,
     int16_t aWhere, int32_t aFlags, bool aSkipLoad,
     dom::Element** aBrowser, dom::BrowsingContext** aBrowsingContext);
   bool LoadTab(TabRecord& aTab, const nsACString& aURL,
                bool aFromExternal, nsIReferrerInfo* aReferrerInfo = nullptr,
                nsIPrincipal* aTriggeringPrincipal = nullptr,
-               nsIContentSecurityPolicy* aCsp = nullptr);
+               nsIPolicyContainer* aPolicyContainer = nullptr);
   nsresult RebindProgressListener(TabRecord& aTab);
   void ScheduleProgressListenerRetry(uint64_t aTabId);
   void FinishProgressListenerRebind(TabRecord& aTab);

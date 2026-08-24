@@ -10,7 +10,6 @@
 
 #include "mozilla/PresShell.h"
 #include "mozilla/SchedulerGroup.h"
-#include "mozilla/Unused.h"
 
 #include "WindowRenderer.h"
 
@@ -25,15 +24,16 @@ const size_t PuppetWidgetBase::kMaxDimension = 4000;
 static nsTArray<PuppetWidgetBase*> gTopLevelWindows;
 
 NS_IMPL_ISUPPORTS_INHERITED(PuppetWidgetBase,
-                            nsBaseWidget,
+                            nsIWidget,
                             nsISupportsWeakReference)
 
 PuppetWidgetBase::PuppetWidgetBase()
-  : nsBaseWidget()
+  : nsIWidget()
   , mVisible(false)
   , mEnabled(false)
   , mActive(false)
   , mRotation(mozilla::ROTATION_0)
+  , mBounds(0, 0, 0, 0)
   , mMargins(0, 0, 0, 0)
   , mSafeAreaInsets(0, 0, 0, 0)
   , mSizeMode(nsSizeMode_Normal)
@@ -43,7 +43,7 @@ PuppetWidgetBase::PuppetWidgetBase()
 
 nsresult
 PuppetWidgetBase::Create(nsIWidget *aParent, const LayoutDeviceIntRect &aRect,
-                         widget::InitData *aInitData)
+                         const widget::InitData& aInitData)
 {
   LOGT("Puppet: %p, parent: %p", this, aParent);
 
@@ -149,35 +149,35 @@ PuppetWidgetBase::ConstrainPosition(DesktopIntPoint& aPoint)
 
 // We're always at <0, 0>, and so ignore move requests.
 void
-PuppetWidgetBase::Move(double aX, double aY)
+PuppetWidgetBase::Move(const DesktopPoint& aPoint)
 {
-  (void)aX;
-  (void)aY;
+  (void)aPoint;
 
   LOGNI();
 }
 
 void
-PuppetWidgetBase::Resize(double aWidth, double aHeight, bool aRepaint)
+PuppetWidgetBase::Resize(const DesktopSize& aSize, bool aRepaint)
 {
   if (Destroyed()) {
     return;
   }
 
   LayoutDeviceIntRect oldBounds = mBounds;
-  LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
+  LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height,
+       aSize.width, aSize.height);
 
   mBounds.y = 0;
   mBounds.x = 0;
-  mBounds.width = NSToIntRound(aWidth);
-  mBounds.height = NSToIntRound(aHeight);
+  mBounds.SizeTo(
+    LayoutDeviceIntSize::Round(aSize * GetDesktopToDeviceScale()));
 
   for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
     mObservers[i]->WidgetBoundsChanged(mBounds);
   }
 
   for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
-    mChildren[i]->Resize(aWidth, aHeight, aRepaint);
+    mChildren[i]->Resize(aSize, aRepaint);
   }
 
   if (aRepaint) {
@@ -187,16 +187,14 @@ PuppetWidgetBase::Resize(double aWidth, double aHeight, bool aRepaint)
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (!oldBounds.IsEqualEdges(mBounds) && listener) {
-    listener->WindowResized(this, mBounds.width, mBounds.height);
+    listener->WindowResized(this, mBounds.Size());
   }
 }
 
 void
-PuppetWidgetBase::Resize(double aX, double aY, double aWidth, double aHeight, bool aRepaint)
+PuppetWidgetBase::Resize(const DesktopRect& aRect, bool aRepaint)
 {
-  (void)aX;
-  (void)aY;
-  Resize(aWidth, aHeight, aRepaint);
+  Resize(aRect.Size(), aRepaint);
 }
 
 void
@@ -216,8 +214,8 @@ PuppetWidgetBase::IsEnabled() const
 void
 PuppetWidgetBase::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType)
 {
-  Unused << aRaise;
-  Unused << aCallerType;
+  (void) aRaise;
+  (void) aCallerType;
   LOGT();
 }
 
@@ -295,18 +293,7 @@ PuppetWidgetBase::Paint()
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (listener) {
-    listener->WillPaintWindow(this);
-  }
-
-  if (Destroyed()) {
-    return;
-  }
-
-  // WillPaintWindow may run script and change the attached listener.
-  listener =
-    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
-  if (listener) {
-    listener->DidPaintWindow();
+    listener->PaintWindow(this);
   }
 }
 
@@ -441,7 +428,7 @@ PuppetWidgetBase::UpdateBounds(bool aRepaint)
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (!oldBounds.IsEqualEdges(mBounds) && listener) {
-    listener->WindowResized(this, mBounds.width, mBounds.height);
+    listener->WindowResized(this, mBounds.Size());
   }
 
 #ifdef DEBUG

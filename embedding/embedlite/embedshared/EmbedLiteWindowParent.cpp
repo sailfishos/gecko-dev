@@ -22,7 +22,6 @@
 #include "gfxImageSurface.h"
 #include "gfxPoint.h"
 #include "mozilla/DataMutex.h"
-#include "mozilla/Unused.h"
 #include "mozilla/layers/APZThreadUtils.h"
 
 using namespace mozilla::gfx;
@@ -164,7 +163,7 @@ void EmbedLiteWindowParent::SetSize(int width, int height)
     }
   }
 
-  Unused << SendSetSize(gfxSize(width, height));
+  (void) SendSetSize(gfxSize(width, height));
   if (changed) {
     ScheduleUpdate();
   }
@@ -184,7 +183,7 @@ EmbedLiteWindowParent::SetContentOrientation(const uint32_t &aRotation)
     }
   }
 
-  Unused << SendSetContentOrientation(aRotation);
+  (void) SendSetContentOrientation(aRotation);
   if (changed) {
     ScheduleUpdate();
   }
@@ -314,7 +313,7 @@ void EmbedLiteWindowParent::SetTabListener(
       !mPendingBeforeUnloadPrompts.empty()) {
     if (CanSendChromeSessionCommand()) {
       for (const auto& prompt : mPendingBeforeUnloadPrompts) {
-        Unused << SendResolveBeforeUnloadPrompt(
+        (void) SendResolveBeforeUnloadPrompt(
           prompt.first, prompt.second, false);
       }
     }
@@ -1101,7 +1100,7 @@ EmbedLiteWindowParent::RecvOnBeforeUnloadPrompt(
   }
 
   if (!mChromeTabSessionListener) {
-    Unused << SendResolveBeforeUnloadPrompt(
+    (void) SendResolveBeforeUnloadPrompt(
       aPrompt.requestId(), aPrompt.tabId(), false);
     return IPC_OK();
   }

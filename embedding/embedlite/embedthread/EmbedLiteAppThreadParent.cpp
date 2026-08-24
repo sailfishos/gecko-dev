@@ -11,7 +11,6 @@
 #include "EmbedLiteApp.h"
 #include "mozilla/layers/PCompositorBridgeParent.h"
 
-#include "mozilla/Unused.h"
 
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -111,7 +110,7 @@ EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(
     const uintptr_t &aListener, const bool &chromeHosted,
     const nsCString &initialContentURI)
 {
-  Unused << initialContentURI;
+  (void) initialContentURI;
   LOGT("id:%u", id);
   EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(
     width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener),
