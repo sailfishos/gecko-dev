@@ -41,6 +41,7 @@ void ScreenHelperQt::RefreshScreens() {
             DesktopToLayoutDeviceScale(deviceScale),
             CSSToLayoutDeviceScale(deviceScale), screen->logicalDotsPerInch(),
             Screen::IsPseudoDisplay::No, Screen::IsHDR::No,
+            80.0f, 80.0f,
             hal::ScreenOrientation::None, 0));
     }
 
@@ -49,7 +50,8 @@ void ScreenHelperQt::RefreshScreens() {
         screenList.AppendElement(MakeRefPtr<Screen>(
             rect, rect, 24, 24, 0, DesktopToLayoutDeviceScale(),
             CSSToLayoutDeviceScale(), 96.0f, Screen::IsPseudoDisplay::No,
-            Screen::IsHDR::No, hal::ScreenOrientation::None, 0));
+            Screen::IsHDR::No, 80.0f, 80.0f,
+            hal::ScreenOrientation::None, 0));
     }
 
     ScreenManager::Refresh(std::move(screenList));

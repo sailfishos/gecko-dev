@@ -52,8 +52,10 @@ nsFilePicker::~nsFilePicker() {
 
 NS_IMETHODIMP
 nsFilePicker::Init(mozilla::dom::BrowsingContext* aBrowsingContext,
-                   const nsAString& aTitle, nsIFilePicker::Mode aMode) {
-  nsresult rv = nsBaseFilePicker::Init(aBrowsingContext, aTitle, aMode);
+                   const nsAString& aTitle, nsIFilePicker::Mode aMode,
+                   nsISupports* aGlobal) {
+  nsresult rv =
+      nsBaseFilePicker::Init(aBrowsingContext, aTitle, aMode, aGlobal);
   NS_ENSURE_SUCCESS(rv, rv);
 
   mTitle = aTitle;

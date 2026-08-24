@@ -27,7 +27,8 @@ class nsFilePicker final : public nsBaseFilePicker,
 
   NS_IMETHOD Init(mozilla::dom::BrowsingContext* aBrowsingContext,
                   const nsAString& aTitle,
-                  nsIFilePicker::Mode aMode) override;
+                  nsIFilePicker::Mode aMode,
+                  nsISupports* aGlobal) override;
   NS_IMETHOD Open(nsIFilePickerShownCallback* aCallback) override;
   NS_IMETHOD AppendFilter(const nsAString& aTitle,
                           const nsAString& aFilter) override;
