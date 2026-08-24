@@ -19,7 +19,6 @@
 #include "nsIBaseWindow.h"
 #include "EmbedLitePuppetWidget.h"
 #include "nsGlobalWindowInner.h"
-#include "nsGlobalWindowOuter.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDOMWindow.h"
 #include "nsNetUtil.h"
@@ -30,12 +29,12 @@
 #include "nsIOpenWindowInfo.h"
 #include "nsWebBrowser.h"
 #include "nsRefreshDriver.h"
-#include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsLayoutUtils.h"
 #include "nsILoadContext.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsISelectionController.h"
+#include "nsContentUtils.h"
 #include "mozilla/Preferences.h"
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
@@ -45,9 +44,11 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/FunctionBinding.h"
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
+#include "mozilla/dom/WindowBinding.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs_embedlite.h"  // for StaticPrefs::embedlite_azpc_*_*()
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
@@ -1387,15 +1388,36 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(window)->WindowUtils();
-  NS_ENSURE_TRUE(utils, IPC_OK());
+  NS_ENSURE_TRUE(window, IPC_OK());
 
-  bool ignored = false;
-  uint8_t argc = 6;
-  utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
-                        aIgnoreRootScrollFrame,
-                        0.0, MouseEvent_Binding::MOZ_SOURCE_TOUCH,
-                        false, false, 0, 0, argc, &ignored);
+  nsIDocShell* docShell = window->GetDocShell();
+  RefPtr<PresShell> presShell = docShell ? docShell->GetPresShell() : nullptr;
+  NS_ENSURE_TRUE(presShell, IPC_OK());
+
+  nsPoint offset;
+  nsCOMPtr<nsIWidget> widget = nsContentUtils::GetWidget(presShell, &offset);
+  NS_ENSURE_TRUE(widget, IPC_OK());
+
+  LayoutDeviceIntPoint refPoint = nsContentUtils::ToWidgetPoint(
+      CSSPoint(aX, aY), offset, presShell->GetPresContext());
+
+  dom::SynthesizeMouseEventData data;
+  data.mButton = aButton;
+  data.mButtons.Construct(0);
+  data.mClickCount.Construct(aClickCount);
+  data.mInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
+  data.mModifiers = aModifiers;
+  data.mPressure.Construct(0.0f);
+
+  dom::SynthesizeMouseEventOptions options;
+  options.mIgnoreRootScrollFrame = aIgnoreRootScrollFrame;
+  options.mIsDOMEventSynthesized = false;
+  options.mIsWidgetEventSynthesized = false;
+
+  dom::Optional<OwningNonNull<dom::VoidFunction>> noCallback;
+  auto result = nsContentUtils::SynthesizeMouseEvent(
+      presShell, widget, aType, refPoint, data, options, noCallback);
+  NS_ENSURE_TRUE(result.isOk(), IPC_OK());
 
   return IPC_OK();
 }
