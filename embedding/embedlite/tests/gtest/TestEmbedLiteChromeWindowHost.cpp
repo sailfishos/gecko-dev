@@ -7,15 +7,18 @@
 
 #include "embedshared/EmbedLitePuppetWidget.h"
 #include "embedshared/nsWindow.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "mozilla/layers/IAPZCTreeManager.h"
 #include "mozilla/widget/IMEData.h"
 #include "nsCOMPtr.h"
 #include "nsIWidget.h"
 #include "nsIWidgetListener.h"
 #include "nsTArray.h"
+#include "PuppetWidget.h"
 #include "WindowRenderer.h"
 
 using mozilla::embedlite::AutoEmbedLiteChromeWindowHost;
@@ -23,7 +26,17 @@ using mozilla::embedlite::EmbedLitePuppetWidget;
 using mozilla::embedlite::nsWindow;
 using mozilla::FallbackRenderer;
 using mozilla::LayoutDeviceIntRect;
+using mozilla::layers::APZInputBridge;
+using mozilla::layers::AsyncDragMetrics;
+using mozilla::layers::BrowserGestureResponse;
+using mozilla::layers::IAPZCTreeManager;
+using mozilla::layers::KeyboardMap;
+using mozilla::layers::ScrollableLayerGuid;
+using mozilla::layers::TouchBehaviorFlags;
+using mozilla::layers::ZoomConstraints;
+using mozilla::layers::ZoomTarget;
 using mozilla::widget::InitData;
+using mozilla::widget::PuppetWidget;
 using mozilla::widget::WindowType;
 
 namespace {
@@ -39,6 +52,69 @@ public:
 
 private:
   ~TestEmbedLitePuppetWidget() override = default;
+};
+
+class RecordingAPZTreeManager final : public IAPZCTreeManager
+{
+public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(RecordingAPZTreeManager, override)
+
+  void SetKeyboardMap(const KeyboardMap&) override {}
+  void ZoomToRect(const ScrollableLayerGuid&, const ZoomTarget&,
+                  uint32_t) override {}
+  void ContentReceivedInputBlock(uint64_t, bool) override {}
+  void SetTargetAPZC(uint64_t,
+                     const nsTArray<ScrollableLayerGuid>&) override {}
+  void UpdateZoomConstraints(
+      const ScrollableLayerGuid&,
+      const mozilla::Maybe<ZoomConstraints>&) override {}
+  void SetDPI(float aDPI) override { mDPI = aDPI; }
+  void SetAllowedTouchBehavior(
+      uint64_t, const nsTArray<TouchBehaviorFlags>&) override {}
+  void SetBrowserGestureResponse(
+      uint64_t, BrowserGestureResponse) override {}
+  void StartScrollbarDrag(
+      const ScrollableLayerGuid&, const AsyncDragMetrics&) override {}
+  bool StartAutoscroll(
+      const ScrollableLayerGuid&, const mozilla::ScreenPoint&) override {
+    return false;
+  }
+  void StopAutoscroll(const ScrollableLayerGuid&) override {}
+  void SetLongTapEnabled(bool) override {}
+  void NotifyApzAwareListenerAdded(
+      const ScrollableLayerGuid&) override {}
+  APZInputBridge* InputBridge() override { return nullptr; }
+
+  float mDPI = 0.0f;
+
+private:
+  ~RecordingAPZTreeManager() override = default;
+};
+
+class TestScaleWindow final : public nsWindow
+{
+public:
+  TestScaleWindow(double aScale, float aDPI)
+    : nsWindow(nullptr)
+    , mScale(aScale)
+    , mDPI(aDPI)
+  {
+  }
+
+  double GetDefaultScaleInternal() override { return mScale; }
+  float GetDPI() override { return mDPI; }
+  void SetResolution(double aScale, float aDPI)
+  {
+    mScale = aScale;
+    mDPI = aDPI;
+  }
+  void SetAPZTreeManager(IAPZCTreeManager* aManager) { mAPZC = aManager; }
+
+private:
+  ~TestScaleWindow() override = default;
+
+  double mScale;
+  float mDPI;
 };
 
 class CountingWidgetListener final : public nsIWidgetListener
@@ -121,6 +197,101 @@ TEST(EmbedLiteChromeWindowHostTest, HostedWidgetStartsHidden)
 
   hosted->Destroy();
   host->Destroy();
+}
+
+TEST(EmbedLiteChromeWindowHostTest, HostedDescendantsInheritResolution)
+{
+  const LayoutDeviceIntRect bounds(0, 0, 100, 100);
+  InitData init;
+  init.mWindowType = WindowType::TopLevel;
+  const bool hadScalePref =
+    mozilla::Preferences::HasUserValue("layout.css.devPixelsPerPx");
+  const float scalePref = mozilla::Preferences::GetFloat(
+    "layout.css.devPixelsPerPx", -1.0f);
+
+  RefPtr<TestScaleWindow> host = new TestScaleWindow(3.0, 540.0f);
+  ASSERT_EQ(host->Create(nullptr, bounds, init), NS_OK);
+
+  AutoEmbedLiteChromeWindowHost reservation(host);
+  nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
+  ASSERT_NE(hosted, nullptr);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
+
+  RefPtr<EmbedLitePuppetWidget> nested =
+    new EmbedLitePuppetWidget(nullptr);
+  ASSERT_EQ(nested->Create(hosted, bounds, init), NS_OK);
+
+  EXPECT_DOUBLE_EQ(hosted->GetDefaultScale().scale, 3.0);
+  EXPECT_FLOAT_EQ(hosted->GetDPI(), 540.0f);
+  EXPECT_DOUBLE_EQ(nested->GetDefaultScale().scale, 3.0);
+  EXPECT_FLOAT_EQ(nested->GetDPI(), 540.0f);
+
+  host->SetResolution(2.5, 480.0f);
+  EXPECT_DOUBLE_EQ(hosted->GetDefaultScale().scale, 2.5);
+  EXPECT_FLOAT_EQ(hosted->GetDPI(), 480.0f);
+  EXPECT_DOUBLE_EQ(nested->GetDefaultScale().scale, 2.5);
+  EXPECT_FLOAT_EQ(nested->GetDPI(), 480.0f);
+
+  host->SetSize(100.0, 200.0);
+  host->SetRotation(mozilla::ROTATION_90);
+  host->UpdateBounds(false);
+  EXPECT_EQ(hosted->GetBounds().Size(),
+            mozilla::LayoutDeviceIntSize(200, 100));
+  EXPECT_EQ(nested->GetBounds().Size(),
+            mozilla::LayoutDeviceIntSize(200, 100));
+  EXPECT_EQ(mozilla::Preferences::HasUserValue(
+              "layout.css.devPixelsPerPx"),
+            hadScalePref);
+  EXPECT_FLOAT_EQ(mozilla::Preferences::GetFloat(
+                    "layout.css.devPixelsPerPx", -1.0f),
+                  scalePref);
+
+  nested->Destroy();
+  hosted->Destroy();
+  host->Destroy();
+}
+
+TEST(EmbedLiteChromeWindowHostTest, UnparentedWidgetUsesScreenFallbacks)
+{
+  RefPtr<TestEmbedLitePuppetWidget> widget =
+    new TestEmbedLitePuppetWidget;
+
+  EXPECT_DOUBLE_EQ(widget->GetDefaultScale().scale,
+                   nsIWidget::GetFallbackDefaultScale().scale);
+  EXPECT_FLOAT_EQ(widget->GetDPI(), nsIWidget::GetFallbackDPI());
+
+  widget->Destroy();
+}
+
+TEST(EmbedLiteChromeWindowHostTest, BackingScaleChangeNotifiesAPZ)
+{
+  RefPtr<TestScaleWindow> host = new TestScaleWindow(3.0, 540.0f);
+  RefPtr<RecordingAPZTreeManager> apz = new RecordingAPZTreeManager;
+  host->SetAPZTreeManager(apz);
+
+  host->BackingScaleFactorChanged();
+  EXPECT_FLOAT_EQ(apz->mDPI, 540.0f);
+
+  host->SetResolution(2.5, 480.0f);
+  host->BackingScaleFactorChanged();
+  EXPECT_FLOAT_EQ(apz->mDPI, 480.0f);
+
+  host->Destroy();
+}
+
+TEST(EmbedLiteChromeWindowHostTest, RemotePuppetCachesResolution)
+{
+  RefPtr<PuppetWidget> remote = new PuppetWidget(nullptr);
+
+  remote->UpdateBackingScaleCache(540.0f, 1, 3.0, 1.0);
+  EXPECT_FLOAT_EQ(remote->GetDPI(), 540.0f);
+  EXPECT_DOUBLE_EQ(remote->GetDefaultScale().scale, 3.0);
+
+  remote->UpdateBackingScaleCache(480.0f, 1, 2.5, 1.0);
+  EXPECT_FLOAT_EQ(remote->GetDPI(), 480.0f);
+  EXPECT_DOUBLE_EQ(remote->GetDefaultScale().scale, 2.5);
+
+  remote->Destroy();
 }
 
 TEST(EmbedLiteChromeWindowHostTest, InvalidateUsesAttachedListener)

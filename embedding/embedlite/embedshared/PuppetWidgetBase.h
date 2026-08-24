@@ -63,6 +63,8 @@ public:
   virtual nsresult SetTitle(const nsAString& aTitle) override;
 
   virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override;
+  virtual float GetDPI() override;
+  virtual double GetDefaultScaleInternal() override;
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 
@@ -76,6 +78,7 @@ public:
       const mozilla::LayoutDeviceIntMargin& aSafeAreaInsets);
   void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
+  void NotifyBackingScaleFactorChanged();
 
   virtual WindowRenderer* GetWindowRenderer() override;
 

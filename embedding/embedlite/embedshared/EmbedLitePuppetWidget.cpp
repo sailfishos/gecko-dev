@@ -357,11 +357,15 @@ EmbedLitePuppetWidget::NeedsPaint()
 float
 EmbedLitePuppetWidget::GetDPI()
 {
+  if (GetParent()) {
+    return PuppetWidgetBase::GetDPI();
+  }
+
   if (mDPI < 0) {
     if (mView) {
       mView->GetDPI(&mDPI);
     } else {
-      mDPI = nsBaseWidget::GetDPI();
+      mDPI = nsIWidget::GetFallbackDPI();
     }
   }
 

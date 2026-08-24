@@ -8,6 +8,7 @@
 #include "EmbedLog.h"
 #include "PuppetWidgetBase.h"
 
+#include "mozilla/PresShell.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 
@@ -235,6 +236,27 @@ PuppetWidgetBase::WidgetToScreenOffset()
   return LayoutDeviceIntPoint(0, 0);
 }
 
+float
+PuppetWidgetBase::GetDPI()
+{
+  nsIWidget* root = this;
+  while (root->GetParent()) {
+    root = root->GetParent();
+  }
+  return root == this ? nsIWidget::GetFallbackDPI() : root->GetDPI();
+}
+
+double
+PuppetWidgetBase::GetDefaultScaleInternal()
+{
+  nsIWidget* root = this;
+  while (root->GetParent()) {
+    root = root->GetParent();
+  }
+  return root == this ? nsIWidget::GetFallbackDefaultScale().scale
+                      : root->GetDefaultScaleInternal();
+}
+
 void
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
@@ -431,6 +453,25 @@ void
 PuppetWidgetBase::SetActive(bool active)
 {
   mActive = active;
+}
+
+void
+PuppetWidgetBase::NotifyBackingScaleFactorChanged()
+{
+  RefPtr<PuppetWidgetBase> self(this);
+  if (PresShell* presShell = GetPresShell()) {
+    presShell->BackingScaleFactorChanged();
+  }
+
+  AutoTArray<RefPtr<PuppetWidgetBase>, 4> children;
+  for (PuppetWidgetBase* child : mChildren) {
+    children.AppendElement(child);
+  }
+  for (PuppetWidgetBase* child : children) {
+    if (!child->Destroyed() && child->GetParent() == this) {
+      child->NotifyBackingScaleFactorChanged();
+    }
+  }
 }
 
 WindowRenderer *

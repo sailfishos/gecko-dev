@@ -346,11 +346,8 @@ nsWindow::GetDefaultScaleInternal()
 void
 nsWindow::BackingScaleFactorChanged()
 {
-  if (mWidgetListener) {
-    if (PresShell* presShell = mWidgetListener->GetPresShell()) {
-      presShell->BackingScaleFactorChanged();
-    }
-  }
+  NotifyBackingScaleFactorChanged();
+  NotifyAPZOfDPIChange();
 }
 
 void

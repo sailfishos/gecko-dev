@@ -565,6 +565,8 @@ void EmbedLiteWindowChild::CreateWidget()
     return;
   }
 
+  RefreshScreen();
+
   mWidget = new nsWindow(this);
   GetWidget()->SetRotation(mRotation);
 
@@ -586,9 +588,6 @@ void EmbedLiteWindowChild::CreateWidget()
     GetWidget()->SetActive(true);
   }
   GetWidget()->UpdateBounds(true);
-
-  // Initialize ScreenManager
-  RefreshScreen();
 
   if (!mChromeHosted) {
     ChromeSessionInitializationFinished(true);
@@ -718,29 +717,34 @@ void EmbedLiteWindowChild::RefreshScreen()
 
 void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &density, const float &dpi)
 {
-  bool refresh = false;
+  bool screenChanged = false;
+  bool resolutionChanged = false;
   float normalizedDensity = density > 0.0f ? density : 1.0f;
 
   if (depth != mDepth) {
     mDepth = depth;
-    refresh = true;
+    screenChanged = true;
   }
 
   if (normalizedDensity != mDensity) {
     mDensity = normalizedDensity;
-    refresh = true;
+    screenChanged = true;
+    resolutionChanged = true;
   }
 
   if (dpi != mDpi) {
     mDpi = dpi;
-    refresh = true;
+    screenChanged = true;
+    resolutionChanged = true;
   }
 
-  if (refresh) {
-    RefreshScreen();
-    if (mWidget) {
-      GetWidget()->BackingScaleFactorChanged();
-    }
+  if (!screenChanged || !mWidget) {
+    return;
+  }
+
+  RefreshScreen();
+  if (resolutionChanged) {
+    GetWidget()->BackingScaleFactorChanged();
   }
 }
 
