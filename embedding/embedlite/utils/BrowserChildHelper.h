@@ -20,11 +20,17 @@
 #include "mozilla/dom/MessageManagerCallback.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/UniquePtr.h"
 
 class nsPresContext;
 class nsIDOMWindowUtils;
 
 namespace mozilla {
+
+namespace dom {
+class ChromeMessageSender;
+class EmbedFrame;
+}
 
 namespace layers {
 struct ScrollableLayerGuid;
@@ -68,6 +74,7 @@ class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
 };
 
 class EmbedLiteViewChildIface;
+class BrowserChildHelperChromeMessageManagerCallback;
 class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
                            public nsMessageManagerScriptExecutor,
                            public nsIDOMEventListener,
@@ -77,6 +84,9 @@ class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
 {
 public:
   typedef mozilla::layers::ScrollableLayerGuid::ViewID ViewID;
+  using StructuredCloneData = dom::ipc::StructuredCloneData;
+  using StructuredCloneArray =
+      nsTArray<NotNull<RefPtr<StructuredCloneData>>>;
   BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -98,10 +108,10 @@ public:
    */
   bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
   bool DoSendBlockingMessage(const nsAString& aMessage,
-                             mozilla::dom::ipc::StructuredCloneData& aData,
-                             nsTArray<mozilla::dom::ipc::StructuredCloneData>* aRetVal) override;
+                             NotNull<StructuredCloneData*> aData,
+                             StructuredCloneArray* aRetVal) override;
   nsresult DoSendAsyncMessage(const nsAString& aMessage,
-                              mozilla::dom::ipc::StructuredCloneData& aData) override;
+                              NotNull<StructuredCloneData*> aData) override;
 
   bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                const mozilla::layers::ScrollableLayerGuid::ViewID &aViewId,
@@ -134,9 +144,20 @@ protected:
   bool HasValidInnerSize();
 
   RefPtr<BrowserChildHelperMessageManager> mBrowserChildMessageManager;
+  UniquePtr<BrowserChildHelperChromeMessageManagerCallback>
+      mChromeMessageManagerCallback;
+  RefPtr<dom::ChromeMessageSender> mChromeMessageManager;
+  RefPtr<dom::EmbedFrame> mEmbedFrame;
 
 private:
   bool InitBrowserChildHelperMessageManager();
+  nsresult SendAsyncMessageToChild(
+      const nsAString& aMessage,
+      NotNull<StructuredCloneData*> aData);
+  void ForwardMessageToEmbedLite(
+      JSContext* aCx, const nsAString& aMessage, bool aIsSync,
+      JS::Handle<JS::Value> aData, bool aHasTransferables,
+      StructuredCloneArray* aRetVal);
   void Disconnect();
   void Unload();
   bool IPCOpen() const { return mIPCOpen; }
@@ -159,6 +180,7 @@ private:
   friend class EmbedLiteViewProcessChild;
   friend class EmbedLiteViewChildIface;
   friend class EmbedLiteViewChild;
+  friend class BrowserChildHelperChromeMessageManagerCallback;
   EmbedLiteViewChildIface* mView;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   const uint32_t mId;

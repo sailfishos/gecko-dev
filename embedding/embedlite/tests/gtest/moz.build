@@ -9,6 +9,7 @@ UNIFIED_SOURCES += [
     'TestEmbedLiteChromeContentSession.cpp',
     'TestEmbedLiteChromeWindowHost.cpp',
     'TestEmbedLiteCoreInit.cpp',
+    'TestEmbedLiteMessageSerialization.cpp',
     'TestEmbedLiteViewInit.cpp',
 ]
 

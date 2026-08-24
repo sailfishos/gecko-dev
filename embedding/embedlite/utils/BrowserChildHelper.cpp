@@ -9,18 +9,20 @@
 
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteViewThreadChild.h"
-#include "EmbedLiteJSON.h"
+#include "EmbedLiteMessageSerialization.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 #include "mozilla/layers/InputAPZContext.h"
 
+#include "mozilla/dom/ChromeMessageSender.h"
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/MessageManagerBinding.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/JSActorService.h"
+#include "mozilla/dom/SameProcessMessageQueue.h"
 
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
@@ -53,6 +55,89 @@ using namespace mozilla::dom;
 using namespace mozilla::widget;
 
 static const CSSSize kDefaultViewportSize(980, 480);
+
+class AsyncMessageToEmbedLiteParent final
+    : public nsSameProcessAsyncMessageBase,
+      public SameProcessMessageQueue::Runnable {
+ public:
+  AsyncMessageToEmbedLiteParent(BrowserChildHelper* aHelper,
+                                EmbedFrame* aTarget,
+                                ChromeMessageSender* aManager)
+      : mHelper(aHelper), mTarget(aTarget), mManager(aManager) {}
+
+  nsresult HandleMessage() override {
+    ReceiveMessage(static_cast<EventTarget*>(mTarget.get()), nullptr,
+                   mManager);
+    return NS_OK;
+  }
+
+ private:
+  RefPtr<BrowserChildHelper> mHelper;
+  RefPtr<EmbedFrame> mTarget;
+  RefPtr<ChromeMessageSender> mManager;
+};
+
+class AsyncMessageToEmbedLiteChild final
+    : public nsSameProcessAsyncMessageBase,
+      public SameProcessMessageQueue::Runnable {
+ public:
+  AsyncMessageToEmbedLiteChild(BrowserChildHelperMessageManager* aTarget,
+                               nsFrameMessageManager* aManager)
+      : mTarget(aTarget), mManager(aManager) {}
+
+  nsresult HandleMessage() override {
+    ReceiveMessage(static_cast<EventTarget*>(mTarget.get()), nullptr,
+                   mManager);
+    return NS_OK;
+  }
+
+ private:
+  RefPtr<BrowserChildHelperMessageManager> mTarget;
+  RefPtr<nsFrameMessageManager> mManager;
+};
+
+namespace mozilla::embedlite {
+
+class BrowserChildHelperChromeMessageManagerCallback final
+    : public dom::ipc::MessageManagerCallback {
+ public:
+  explicit BrowserChildHelperChromeMessageManagerCallback(
+      BrowserChildHelper* aHelper)
+      : mHelper(aHelper) {}
+
+  void Disconnect() { mHelper = nullptr; }
+
+  bool DoLoadMessageManagerScript(const nsAString& aURL,
+                                  bool aRunInGlobalScope) override {
+    return mHelper &&
+           mHelper->DoLoadMessageManagerScript(aURL, aRunInGlobalScope);
+  }
+
+  nsresult DoSendAsyncMessage(
+      const nsAString& aMessage,
+      NotNull<dom::ipc::StructuredCloneData*> aData) override {
+    return mHelper ? mHelper->SendAsyncMessageToChild(aMessage, aData)
+                   : NS_ERROR_NOT_AVAILABLE;
+  }
+
+  bool WantsMessageReceived() const override { return true; }
+
+  void DoReceiveMessage(
+      JSContext* aCx, const nsAString& aMessage, bool aIsSync,
+      JS::Handle<JS::Value> aData, bool aHasTransferables,
+      nsTArray<NotNull<RefPtr<dom::ipc::StructuredCloneData>>>* aRetVal)
+      override {
+    if (mHelper) {
+      mHelper->ForwardMessageToEmbedLite(
+          aCx, aMessage, aIsSync, aData, aHasTransferables, aRetVal);
+    }
+  }
+
+ private:
+  BrowserChildHelper* mHelper;
+};
+
+}  // namespace mozilla::embedlite
 
 BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId)
   : mView(aView)
@@ -93,6 +178,13 @@ BrowserChildHelper::~BrowserChildHelper()
 {
   LOGT();
 
+  if (mChromeMessageManager) {
+    mChromeMessageManager->Disconnect();
+  }
+  if (mChromeMessageManagerCallback) {
+    mChromeMessageManagerCallback->Disconnect();
+  }
+
   if (mBrowserChildMessageManager) {
     EventListenerManager* elm = mBrowserChildMessageManager->GetExistingListenerManager();
     if (elm) {
@@ -107,6 +199,12 @@ BrowserChildHelper::Disconnect()
 {
   LOGT();
   mIPCOpen = false;
+  if (mChromeMessageManager) {
+    mChromeMessageManager->Disconnect();
+  }
+  if (mChromeMessageManagerCallback) {
+    mChromeMessageManagerCallback->Disconnect();
+  }
   if (mBrowserChildMessageManager) {
     // We should have a message manager if the global is alive, but it
     // seems sometimes we don't.  Assert in aurora/nightly, but don't
@@ -185,36 +283,54 @@ BrowserChildHelper::GetTopLevelPresShell() const {
 
 void BrowserChildHelper::DispatchMessageManagerMessage(const nsAString& aMessageName,
                                                        const nsAString& aJSONData) {
-  AutoSafeJSContext cx;
-  JS::Rooted<JS::Value> json(cx, JS::NullValue());
-  dom::ipc::StructuredCloneData data;
-  if (JS_ParseJSON(cx, static_cast<const char16_t*>(aJSONData.BeginReading()),
-                   aJSONData.Length(), &json)) {
-    ErrorResult rv;
-    data.Write(cx, json, rv);
-    if (NS_WARN_IF(rv.Failed())) {
-      rv.SuppressException();
-      return;
-    }
+  if (!InitBrowserChildHelperMessageManager()) {
+    return;
   }
 
-  RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
-      mBrowserChildMessageManager);
-  RefPtr<nsFrameMessageManager> mm = kungFuDeathGrip->GetMessageManager();
-  mm->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr,
-                     aMessageName, false, &data, nullptr, IgnoreErrors());
+  AutoSafeJSContext cx;
+  JS::Rooted<JS::Value> json(cx, JS::NullValue());
+  if (!JS_ParseJSON(cx,
+                    static_cast<const char16_t*>(aJSONData.BeginReading()),
+                    aJSONData.Length(), &json)) {
+    JS_ClearPendingException(cx);
+    json.setNull();
+  }
+
+  auto data = MakeNotNull<RefPtr<dom::ipc::StructuredCloneData>>(
+      JS::StructuredCloneScope::DifferentProcess,
+      StructuredCloneHolder::TransferringNotSupported);
+  ErrorResult rv;
+  data->Write(cx, json, rv);
+  if (NS_WARN_IF(rv.Failed())) {
+    rv.SuppressException();
+    return;
+  }
+
+  (void)mChromeMessageManager->DispatchAsyncMessageInternal(cx, aMessageName,
+                                                            data);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(BrowserChildHelper)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(BrowserChildHelper)
+  if (tmp->mChromeMessageManager) {
+    tmp->mChromeMessageManager->Disconnect();
+  }
+  if (tmp->mChromeMessageManagerCallback) {
+    tmp->mChromeMessageManagerCallback->Disconnect();
+  }
+  tmp->mChromeMessageManagerCallback = nullptr;
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowserChildMessageManager)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mChromeMessageManager)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mEmbedFrame)
   tmp->nsMessageManagerScriptExecutor::Unlink();
   NS_IMPL_CYCLE_COLLECTION_UNLINK_WEAK_REFERENCE
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(BrowserChildHelper)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowserChildMessageManager)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mChromeMessageManager)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEmbedFrame)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(BrowserChildHelper)
@@ -237,7 +353,7 @@ BrowserChildHelper::InitBrowserChildHelperMessageManager()
 {
   mShouldSendWebProgressEventsToParent = true;
 
-  if (mBrowserChildMessageManager) {
+  if (mBrowserChildMessageManager && mChromeMessageManager && mEmbedFrame) {
     return true;
   }
 
@@ -246,20 +362,44 @@ BrowserChildHelper::InitBrowserChildHelperMessageManager()
   RefPtr<EventTarget> chromeHandler(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
-  RefPtr<BrowserChildHelperMessageManager> scope = mBrowserChildMessageManager =
+  RefPtr<BrowserChildHelperMessageManager> scope =
       new BrowserChildHelperMessageManager(this);
 
   MOZ_ALWAYS_TRUE(nsMessageManagerScriptExecutor::Init());
 
   nsCOMPtr<nsPIWindowRoot> root = do_QueryInterface(chromeHandler);
   if (NS_WARN_IF(!root)) {
-    mBrowserChildMessageManager = nullptr;
     return false;
   }
+
+  RefPtr<ChromeMessageBroadcaster> globalMessageManager =
+      nsFrameMessageManager::GetGlobalMessageManager();
+  NS_ENSURE_TRUE(globalMessageManager, false);
+
+  auto callback = MakeUnique<BrowserChildHelperChromeMessageManagerCallback>(
+      this);
+  RefPtr<ChromeMessageSender> chromeMessageManager =
+      new ChromeMessageSender(globalMessageManager);
+
+  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
+  embedFrame->mMessageManager = chromeMessageManager;
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (docShell) {
+    embedFrame->mWindow = docShell->GetBrowsingContext();
+  }
+
+  mBrowserChildMessageManager = scope;
+  mChromeMessageManagerCallback = std::move(callback);
+  mChromeMessageManager = chromeMessageManager;
+  mEmbedFrame = embedFrame;
+
   root->SetParentTarget(scope);
 
   RefPtr<JSActorService> wasvc = JSActorService::GetSingleton();
   wasvc->RegisterChromeEventTarget(scope);
+
+  chromeMessageManager->InitWithCallback(
+      mChromeMessageManagerCallback.get());
 
   return true;
 }
@@ -377,8 +517,8 @@ BrowserChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunI
 
 bool
 BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
-                                          mozilla::dom::ipc::StructuredCloneData& aData,
-                                          nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal)
+    NotNull<dom::ipc::StructuredCloneData*> aData,
+    nsTArray<NotNull<RefPtr<dom::ipc::StructuredCloneData>>>* aRetVal)
 {
   if (!mView) {
     return false;
@@ -386,75 +526,18 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
 
   NS_ENSURE_TRUE(InitBrowserChildHelperMessageManager(), false);
 
-  RefPtr<ChromeMessageBroadcaster> globalIMessageManager = nsFrameMessageManager::GetGlobalMessageManager();
-  RefPtr<nsFrameMessageManager> globalMessageManager = globalIMessageManager;
-
-  RefPtr<nsFrameMessageManager> mm =
-      mBrowserChildMessageManager->GetMessageManager();
-
-  // We should have a message manager if the global is alive, but it
-  // seems sometimes we don't.  Assert in aurora/nightly, but don't
-  // crash in release builds.
-  MOZ_DIAGNOSTIC_ASSERT(mm);
-  if (!mm) {
-    return true;
-  }
-
-
-  RefPtr<mozilla::dom::EmbedFrame> embedFrame = new mozilla::dom::EmbedFrame();
-  embedFrame->mMessageManager = mBrowserChildMessageManager;
-  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
-  if (window) {
-    embedFrame->mWindow = window->GetBrowsingContext();
-  }
-
-  globalMessageManager->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
-  mm->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
-
-  if (!mView->HasMessageListener(aMessage)) {
-    LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
-    return true;
-  }
-
-  // FIXME: Need callback interface for simple JSON to avoid useless conversion here
-  JS::RootedValue rval(mozilla::dom::RootingCx());
-  JSContext *context = nsContentUtils::GetCurrentJSContext();
-  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcess;
-
-  if (aData.DataLength() > 0 && !JS_ReadStructuredClone(context, aData.Data(),
-                                                        JS_STRUCTURED_CLONE_VERSION,
-                                                        scope,
-                                                        &rval,
-                                                        JS::CloneDataPolicy(),
-                                                        nullptr, nullptr)) {
-    JS_ClearPendingException(context);
-    return false;
-  }
-
-  nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(context, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
-  NS_ENSURE_TRUE(!json.IsEmpty(), false);
-
-  // FIXME : Return value should be written to nsTArray<StructuredCloneData> *aRetVal
-  nsTArray<nsString> jsonRetVal;
-
-  bool retValue = mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
-  if (retValue && aRetVal) {
-    for (uint32_t i = 0; i < jsonRetVal.Length(); i++) {
-      mozilla::dom::ipc::StructuredCloneData* cloneData = aRetVal->AppendElement();
-
-      NS_ConvertUTF16toUTF8 data(jsonRetVal[i]);
-      if (!cloneData->CopyExternalData(data.get(), data.Length())) {
-        return false;
-      }
-    }
+  SameProcessMessageQueue::Get()->Flush();
+  if (mChromeMessageManager) {
+    mChromeMessageManager->ReceiveMessage(
+        static_cast<EventTarget*>(mEmbedFrame.get()), nullptr, aMessage, true,
+        aData, aRetVal);
   }
 
   return true;
 }
 
 nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
-                                                mozilla::dom::ipc::StructuredCloneData& aData)
+    NotNull<dom::ipc::StructuredCloneData*> aData)
 {
   if (!mView) {
     return NS_ERROR_FAILURE;
@@ -464,67 +547,79 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
     return NS_ERROR_UNEXPECTED;
   }
 
-  RefPtr<ChromeMessageBroadcaster> globalIMessageManager = nsFrameMessageManager::GetGlobalMessageManager();
-  RefPtr<nsFrameMessageManager> globalMessageManager = globalIMessageManager;
+  RefPtr<AsyncMessageToEmbedLiteParent> event =
+      new AsyncMessageToEmbedLiteParent(this, mEmbedFrame,
+                                        mChromeMessageManager);
+  nsresult rv = event->Init(aMessage, aData);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
-  RefPtr<nsFrameMessageManager> mm =
+  SameProcessMessageQueue::Get()->Push(event);
+  return NS_OK;
+}
+
+nsresult BrowserChildHelper::SendAsyncMessageToChild(
+    const nsAString& aMessage,
+    NotNull<dom::ipc::StructuredCloneData*> aData) {
+  if (!mBrowserChildMessageManager) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  RefPtr<nsFrameMessageManager> manager =
       mBrowserChildMessageManager->GetMessageManager();
-
-  // We should have a message manager if the global is alive, but it
-  // seems sometimes we don't.  Assert in aurora/nightly, but don't
-  // crash in release builds.
-  MOZ_DIAGNOSTIC_ASSERT(mm);
-  if (!mm) {
-    return NS_OK;
+  if (!manager) {
+    return NS_ERROR_NOT_AVAILABLE;
   }
 
-  RefPtr<mozilla::dom::EmbedFrame> embedFrame = new mozilla::dom::EmbedFrame();
-  embedFrame->mMessageManager = mBrowserChildMessageManager;
-  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
-  if (window) {
-    embedFrame->mWindow = window->GetBrowsingContext();
+  RefPtr<AsyncMessageToEmbedLiteChild> event =
+      new AsyncMessageToEmbedLiteChild(mBrowserChildMessageManager, manager);
+  nsresult rv = event->Init(aMessage, aData);
+  if (NS_FAILED(rv)) {
+    return rv;
   }
 
-  globalMessageManager->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
+  SameProcessMessageQueue::Get()->Push(event);
+  return NS_OK;
+}
 
-  mm->ReceiveMessage(static_cast<EventTarget *>(embedFrame),
-                     nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
-
-  if (!mView->HasMessageListener(aMessage)) {
-    LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
-    return NS_OK;
+void BrowserChildHelper::ForwardMessageToEmbedLite(
+    JSContext* aCx, const nsAString& aMessage, bool aIsSync,
+    JS::Handle<JS::Value> aData, bool aHasTransferables,
+    nsTArray<NotNull<RefPtr<dom::ipc::StructuredCloneData>>>* aRetVal) {
+  if (!mView || !mView->HasMessageListener(aMessage)) {
+    return;
   }
 
-  JS::RootedValue rval(mozilla::dom::RootingCx());
-  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcess;
-  JSContext *context = nsContentUtils::GetCurrentJSContext();
-
-
-  if (aData.DataLength() > 0 && !JS_ReadStructuredClone(context, aData.Data(),
-                                                        JS_STRUCTURED_CLONE_VERSION,
-                                                        scope,
-                                                        &rval,
-                                                        JS::CloneDataPolicy(),
-                                                        nullptr, nullptr)) {
-    JS_ClearPendingException(context);
-    return NS_ERROR_UNEXPECTED;
+  if (aHasTransferables) {
+    LOGW("Skipping EmbedLite JSON projection for transferable message: %s\n",
+         NS_ConvertUTF16toUTF8(aMessage).get());
+    return;
   }
 
   nsAutoString json;
-  // Check EmbedLiteJSON::JSONCreator and/or JS_Stringify from Android side
-  if (!JS_Stringify(context, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json))  {
-    return NS_ERROR_UNEXPECTED;
+  if (!ConvertMessageToJSON(aCx, aData, aHasTransferables, json)) {
+    LOGW("Skipping unsupported EmbedLite JSON message: %s\n",
+         NS_ConvertUTF16toUTF8(aMessage).get());
+    return;
   }
 
-  if (json.IsEmpty()) {
-    return NS_ERROR_UNEXPECTED;
+  if (!aIsSync) {
+    if (!mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get())) {
+      LOGW("Failed to send EmbedLite JSON message: %s\n",
+           NS_ConvertUTF16toUTF8(aMessage).get());
+    }
+    return;
   }
 
-  if (!mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get())) {
-    return NS_ERROR_UNEXPECTED;
+  nsTArray<nsString> jsonReplies;
+  if (!mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(),
+                                &jsonReplies) ||
+      !aRetVal) {
+    return;
   }
 
-  return NS_OK;
+  AppendJSONReplies(aCx, jsonReplies, *aRetVal);
 }
 
 ScreenIntSize

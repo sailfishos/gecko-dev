@@ -141,6 +141,7 @@ Patch113:    0113-sailfishos-build-Expand-mozglue-into-programs.patch
 Patch114:    0114-sailfishos-qt-Use-minimal-QPA-for-headless-children.patch
 Patch115:    0115-sailfishos-apz-Dispatch-remote-taps-to-Gecko-main.patch
 Patch116:    0116-sailfishos-embedlite-Bind-compositors-to-their-windows.patch
+Patch120:    0120-sailfishos-embedlite-Expose-received-message-values.patch
 
 BuildRequires:  rust >= 1.90.0
 BuildRequires:  rust-std-static >= 1.90.0

@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EmbedLiteJSON.h"
+#include "EmbedLiteMessageSerialization.h"
 #include "nsHashPropertyBag.h"
 #include "nsIProperty.h"
 #include "EmbedLiteAppService.h"
@@ -18,6 +19,7 @@
 #include "nsContentUtils.h"
 #include "nsISimpleEnumerator.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/ErrorResult.h"
 
 using namespace mozilla;
 
@@ -57,6 +59,54 @@ EmbedLiteJSON::JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
   result->Append(aBuf, aLen);
   return true;
 }
+
+namespace mozilla::embedlite {
+
+bool ConvertMessageToJSON(JSContext* aCx, JS::Handle<JS::Value> aValue,
+                          bool aHasTransferables, nsAString& aJSON)
+{
+  aJSON.Truncate();
+  if (aHasTransferables) {
+    return false;
+  }
+
+  JS::Rooted<JS::Value> value(aCx, aValue);
+  if (!JS_Stringify(aCx, &value, nullptr, JS::NullHandleValue,
+                    EmbedLiteJSON::JSONCreator, &aJSON) ||
+      aJSON.IsEmpty()) {
+    JS_ClearPendingException(aCx);
+    return false;
+  }
+  return true;
+}
+
+void AppendJSONReplies(
+    JSContext* aCx, const nsTArray<nsString>& aJSONReplies,
+    nsTArray<NotNull<RefPtr<dom::ipc::StructuredCloneData>>>& aReplies)
+{
+  for (const nsString& jsonReply : aJSONReplies) {
+    JS::Rooted<JS::Value> reply(aCx, JS::NullValue());
+    if (!JS_ParseJSON(aCx,
+                      static_cast<const char16_t*>(jsonReply.BeginReading()),
+                      jsonReply.Length(), &reply)) {
+      JS_ClearPendingException(aCx);
+      continue;
+    }
+
+    auto cloneData = MakeNotNull<RefPtr<dom::ipc::StructuredCloneData>>(
+        JS::StructuredCloneScope::DifferentProcess,
+        dom::StructuredCloneHolder::TransferringNotSupported);
+    IgnoredErrorResult error;
+    cloneData->Write(aCx, reply, error);
+    if (error.Failed()) {
+      error.SuppressException();
+      continue;
+    }
+    aReplies.AppendElement(std::move(cloneData));
+  }
+}
+
+}  // namespace mozilla::embedlite
 
 nsresult
 JSValToVariant(JSContext* cx, JS::Value& propval, nsIWritableVariant* aVariant)
