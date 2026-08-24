@@ -13,6 +13,7 @@
 #include "mozilla/GenericFactory.h"
 #include "mozilla/ModuleUtils.h"
 #include "nsComponentManagerUtils.h"
+#include "nsAppRunner.h"
 #include "nsXULAppAPI.h"
 #include "nsString.h"
 #include "EmbedLiteAppThreadChild.h"
@@ -205,19 +206,29 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kSessionStatus(
 /* readonly attribute boolean fissionAutostart; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionAutostart(bool *aFissionAutostart)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  *aFissionAutostart = mozilla::FissionAutostart();
+  return NS_OK;
 }
 
 /* readonly attribute nsIXULRuntime_FissionDecisionStatus fissionDecisionStatus; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatus(nsIXULRuntime::FissionDecisionStatus *aFissionDecisionStatus)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIXULRuntime> runtime;
+  nsresult rv = mozilla::AppInfoConstructor(
+      NS_GET_IID(nsIXULRuntime), getter_AddRefs(runtime));
+  NS_ENSURE_SUCCESS(rv, rv);
+  return runtime->GetFissionDecisionStatus(aFissionDecisionStatus);
 }
 
 /* readonly attribute ACString fissionDecisionStatusString; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatusString(nsACString& aFissionDecisionStatusString)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIXULRuntime> runtime;
+  nsresult rv = mozilla::AppInfoConstructor(
+      NS_GET_IID(nsIXULRuntime), getter_AddRefs(runtime));
+  NS_ENSURE_SUCCESS(rv, rv);
+  return runtime->GetFissionDecisionStatusString(
+      aFissionDecisionStatusString);
 }
 
 /* readonly attribute boolean sessionHistoryInParent; */
@@ -301,7 +312,7 @@ EmbedLiteXulAppInfo::GetRemoteType(nsACString& aRemoteType) {
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
 {
-  *aResult = false;
+  *aResult = mozilla::BrowserTabsRemoteAutostart();
   return NS_OK;
 }
 

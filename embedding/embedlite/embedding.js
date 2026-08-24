@@ -203,7 +203,6 @@ pref("network.predictor.preserve", 50); // percentage of predictor data to keep 
 // Hosted tab sessions populate parent-owned history when a restored tab is
 // materialized. Sailfish persists the lightweight session data itself, so keep
 // parent BFCache and Firefox's platform SessionStore collection disabled.
-pref("fission.disableSessionHistoryInParent", false);
 pref("fission.bfcacheInParent", false);
 pref("browser.sessionstore.disable_platform_collection", true);
 
