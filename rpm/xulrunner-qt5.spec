@@ -144,6 +144,8 @@ Patch116:    0116-sailfishos-embedlite-Bind-compositors-to-their-windows.patch
 Patch120:    0120-sailfishos-embedlite-Expose-received-message-values.patch
 Patch121:    0121-sailfishos-xre-Enable-XDG-profile-paths-on-Qt.patch
 Patch122:    0122-sailfishos-embedlite-Handle-in-process-history-trave.patch
+Patch123:    0123-sailfishos-build-Enable-llama-half-precision-on-ARM3.patch
+Patch124:    0124-sailfishos-build-Isolate-SB2-Rust-compiler-flags.patch
 
 BuildRequires:  rust >= 1.90.0
 BuildRequires:  rust-std-static >= 1.90.0
@@ -412,7 +414,7 @@ test -n "$LIBCLANG_SO"
 LIBLLVM_SONAME="$(SBOX_DISABLE_MAPPING=1 readelf -d "$LIBCLANG_SO" | sed -n 's/.*Shared library: \[\(libLLVM\.so\.[^]]*\)\].*/\1/p' | head -n1)"
 test -n "$LIBLLVM_SONAME"
 LIBLLVM_SO="$HOST_LIBDIR/$LIBLLVM_SONAME"
-test -f "$LIBLLVM_SO"
+SBOX_DISABLE_MAPPING=1 test -f "$LIBLLVM_SO"
 SBOX_DISABLE_MAPPING=1 cp "$LIBCLANG_SO" "$LIBLLVM_SO" "%BUILD_DIR"/bindgen-host-libs/
 echo "export MOZ_LIBCLANG_BINDGEN_PATH='"%BUILD_DIR"/bindgen-host-libs/'" >> "$MOZCONFIG"
 
