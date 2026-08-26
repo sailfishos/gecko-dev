@@ -414,7 +414,7 @@ test -n "$LIBCLANG_SO"
 LIBLLVM_SONAME="$(SBOX_DISABLE_MAPPING=1 readelf -d "$LIBCLANG_SO" | sed -n 's/.*Shared library: \[\(libLLVM\.so\.[^]]*\)\].*/\1/p' | head -n1)"
 test -n "$LIBLLVM_SONAME"
 LIBLLVM_SO="$HOST_LIBDIR/$LIBLLVM_SONAME"
-SBOX_DISABLE_MAPPING=1 test -f "$LIBLLVM_SO"
+SBOX_DISABLE_MAPPING=1 /usr/bin/test -f "$LIBLLVM_SO"
 SBOX_DISABLE_MAPPING=1 cp "$LIBCLANG_SO" "$LIBLLVM_SO" "%BUILD_DIR"/bindgen-host-libs/
 echo "export MOZ_LIBCLANG_BINDGEN_PATH='"%BUILD_DIR"/bindgen-host-libs/'" >> "$MOZCONFIG"
 
