@@ -63,6 +63,12 @@ nsresult nsColorPicker::InitNative(
   mEmbedAppService = do_GetService("@mozilla.org/embedlite-app-service;1");
   NS_ENSURE_TRUE(mEmbedAppService, NS_ERROR_FAILURE);
 
+  nsresult rv =
+      mEmbedAppService->GetIDByBrowsingContext(mBrowsingContext, &mWinId);
+  if (NS_SUCCEEDED(rv) && mWinId) {
+    return NS_OK;
+  }
+
   return EnsureWindowId(mBrowsingContext->GetDOMWindow());
 }
 

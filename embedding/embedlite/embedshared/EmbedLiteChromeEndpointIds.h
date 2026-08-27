@@ -14,8 +14,15 @@ namespace mozilla::embedlite {
 class EmbedLiteChromeEndpointIds final
 {
 public:
-  explicit EmbedLiteChromeEndpointIds(uint32_t aFirst = 0x80000000u)
-    : mNext(aFirst)
+  static constexpr uint32_t kFirstEndpointId = 0x40000000u;
+  static constexpr uint32_t kLastEndpointId = INT32_MAX;
+
+  // Endpoint IDs cross the QML boundary, where some platform dialog APIs
+  // expose them through `int` properties. Keep every allocated ID positive
+  // and representable as a signed 32-bit value.
+  explicit EmbedLiteChromeEndpointIds(uint32_t aFirst = kFirstEndpointId)
+    : mNext(aFirst && aFirst <= kLastEndpointId
+              ? aFirst : kFirstEndpointId)
   {}
 
   template<typename IsExternallyOccupied>
@@ -25,10 +32,10 @@ public:
     if (!aBrowserId || mBrowserToEndpoint.count(aBrowserId)) {
       return 0;
     }
-    for (uint64_t attempts = 0; attempts <= UINT32_MAX; ++attempts) {
-      const uint32_t candidate = mNext++;
-      if (!candidate || ContainsEndpoint(candidate) ||
-          aIsExternallyOccupied(candidate)) {
+    for (uint64_t attempts = 0; attempts < kLastEndpointId; ++attempts) {
+      const uint32_t candidate = mNext;
+      mNext = candidate == kLastEndpointId ? 1u : candidate + 1u;
+      if (ContainsEndpoint(candidate) || aIsExternallyOccupied(candidate)) {
         continue;
       }
       mEndpointToBrowser.emplace(candidate, aBrowserId);

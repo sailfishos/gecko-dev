@@ -116,13 +116,13 @@ TEST(EmbedLiteChromeContentSessionTest, FrameScriptRemovalIsExplicit)
 TEST(EmbedLiteChromeContentSessionTest,
      EndpointIdsSkipCollisionsAndRemainStableAcrossRebind)
 {
-  EmbedLiteChromeEndpointIds endpoints(0xfffffffeu);
+  EmbedLiteChromeEndpointIds endpoints(0x7ffffffeu);
   const uint32_t first = endpoints.Allocate(
-    10, [](uint32_t aCandidate) { return aCandidate == 0xfffffffeu; });
-  EXPECT_EQ(first, 0xffffffffu);
+    10, [](uint32_t aCandidate) { return aCandidate == 0x7ffffffeu; });
+  EXPECT_EQ(first, 0x7fffffffu);
   EXPECT_EQ(endpoints.FindByBrowserId(10), first);
 
-  // Allocation wraps past zero without ever exposing it.
+  // Allocation wraps within the positive signed 32-bit range.
   const uint32_t second = endpoints.Allocate(
     20, [](uint32_t) { return false; });
   EXPECT_EQ(second, 1u);
@@ -131,6 +131,16 @@ TEST(EmbedLiteChromeContentSessionTest,
   EXPECT_EQ(endpoints.FindByBrowserId(10), 0u);
   EXPECT_EQ(endpoints.FindByBrowserId(30), first);
   EXPECT_FALSE(endpoints.Rebind(first, 20));
+}
+
+TEST(EmbedLiteChromeContentSessionTest,
+     DefaultEndpointIdsFitSignedQmlIntegers)
+{
+  EmbedLiteChromeEndpointIds endpoints;
+  const uint32_t endpoint = endpoints.Allocate(
+    55, [](uint32_t) { return false; });
+  EXPECT_EQ(endpoint, EmbedLiteChromeEndpointIds::kFirstEndpointId);
+  EXPECT_LE(endpoint, EmbedLiteChromeEndpointIds::kLastEndpointId);
 }
 
 TEST(EmbedLiteChromeContentSessionTest, EndpointRemovalClearsBothIndexes)

@@ -63,6 +63,11 @@ nsFilePicker::Init(mozilla::dom::BrowsingContext* aBrowsingContext,
   mEmbedAppService = do_GetService("@mozilla.org/embedlite-app-service;1");
   NS_ENSURE_TRUE(mEmbedAppService, NS_ERROR_FAILURE);
 
+  rv = mEmbedAppService->GetIDByBrowsingContext(aBrowsingContext, &mWinId);
+  if (NS_SUCCEEDED(rv) && mWinId) {
+    return NS_OK;
+  }
+
   return EnsureWindowId(aBrowsingContext->GetDOMWindow());
 }
 

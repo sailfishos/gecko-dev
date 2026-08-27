@@ -2264,16 +2264,17 @@ bool EmbedLiteChromeSessionChild::SendAsyncMessage(
   ErrorResult error;
   tab->browser->SetAttribute(
     u"data-embedlite-command-name"_ns, aName, error);
-  if (error.Failed() ||
-      !DispatchContentCommand(*tab, u"send-message"_ns, aJSON)) {
+  if (error.Failed()) {
     error.SuppressException();
     return false;
   }
+  // Match legacy EmbedLite delivery order. Native response listeners can
+  // complete and tear down their request before content dispatch re-enters.
   if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
     nsString json(aJSON);
     service->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aName).get(), json);
   }
-  return true;
+  return DispatchContentCommand(*tab, u"send-message"_ns, aJSON);
 }
 
 bool EmbedLiteChromeSessionChild::SendContentMessageFromAppService(
