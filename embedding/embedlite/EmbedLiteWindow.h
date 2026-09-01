@@ -26,7 +26,6 @@ enum ScreenRotation {
 };
 
 class EmbedLiteApp;
-class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
 class EmbedLiteChromeInputSession;
 class EmbedLiteChromeContentSession;
@@ -137,19 +136,14 @@ protected:
 
 class EmbedLiteWindow {
 public:
-  EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id);
-  EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id,
-                  bool chromeHosted);
+  EmbedLiteWindow(EmbedLiteApp* app, EmbedLiteWindowParent*, uint32_t id);
 
-  // PEmbedLiteWindow:
   virtual void SetSize(int width, int height);
 
   virtual uint32_t GetUniqueID() const;
   bool IsChromeHosted() const;
 
-  // Returns a borrowed session only for windows created with
-  // CreateChromeWindow(). The pointer becomes invalid when the window is
-  // destroyed and does not change EmbedLiteWindow's legacy ABI.
+  // The pointer becomes invalid when the window is destroyed.
   MOZ_EXPORT EmbedLiteChromeInputSession* GetChromeInputSession();
   MOZ_EXPORT EmbedLiteChromeContentSession* GetChromeContentSession();
   MOZ_EXPORT EmbedLiteChromeSession* GetChromeSession();

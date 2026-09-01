@@ -9,50 +9,31 @@
 #include "EmbedLiteChromeSession.h"
 #include "EmbedLiteChromeContentSession.h"
 #include "EmbedLiteChromeTabSession.h"
-#include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "EmbedLiteWindowParent.h"
-
-#include <set>
 
 namespace mozilla {
 namespace embedlite {
 
-namespace {
-
-std::set<const EmbedLiteWindow*> sChromeHostedWindows;
-
-} // namespace
-
-EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent* parent, uint32_t id)
-  : EmbedLiteWindow(app, parent, id, false)
-{
-}
-
 EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app,
-                                 PEmbedLiteWindowParent* parent,
-                                 uint32_t id,
-                                 bool chromeHosted)
+                                 EmbedLiteWindowParent* parent,
+                                 uint32_t id)
   : mApp(app)
-  , mWindowParent(static_cast<EmbedLiteWindowParent*>(parent))
+  , mWindowParent(parent)
   , mUniqueID(id)
 {
   MOZ_COUNT_CTOR(EmbedLiteWindow);
-  if (chromeHosted) {
-    sChromeHostedWindows.insert(this);
-  }
   mWindowParent->SetEmbedAPIWindow(this);
 }
 
 EmbedLiteWindow::~EmbedLiteWindow()
 {
-  sChromeHostedWindows.erase(this);
   MOZ_COUNT_DTOR(EmbedLiteWindow);
   mWindowParent->SetEmbedAPIWindow(nullptr);
 }
 
 void EmbedLiteWindow::Destroy()
 {
-  (void) mWindowParent->SendDestroy();
+  mWindowParent->Destroy();
 }
 
 void EmbedLiteWindow::Destroyed()
@@ -75,27 +56,27 @@ uint32_t EmbedLiteWindow::GetUniqueID() const
 
 bool EmbedLiteWindow::IsChromeHosted() const
 {
-  return sChromeHostedWindows.find(this) != sChromeHostedWindows.end();
+  return true;
 }
 
 EmbedLiteChromeSession* EmbedLiteWindow::GetChromeSession()
 {
-  return IsChromeHosted() ? mWindowParent : nullptr;
+  return mWindowParent;
 }
 
 EmbedLiteChromeInputSession* EmbedLiteWindow::GetChromeInputSession()
 {
-  return IsChromeHosted() ? mWindowParent : nullptr;
+  return mWindowParent;
 }
 
 EmbedLiteChromeContentSession* EmbedLiteWindow::GetChromeContentSession()
 {
-  return IsChromeHosted() ? mWindowParent : nullptr;
+  return mWindowParent;
 }
 
 EmbedLiteChromeTabSession* EmbedLiteWindow::GetChromeTabSession()
 {
-  return IsChromeHosted() ? mWindowParent : nullptr;
+  return mWindowParent;
 }
 
 void EmbedLiteWindow::SetContentOrientation(mozilla::embedlite::ScreenRotation rotation)

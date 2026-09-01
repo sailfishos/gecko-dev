@@ -11,8 +11,28 @@
   let dynamicToolbarHeight = null;
   let timeoutsSuspended = false;
   let nextPopupId = 0;
+  let lastOrientation = "";
   const blockedPopups = new Map();
   const viewportChanged = () => state();
+
+  function contentOrientation() {
+    const orientation = content.screen?.mozOrientation ||
+      content.screen?.orientation?.type;
+    if (["portrait-primary", "portrait-secondary", "landscape-primary",
+         "landscape-secondary"].includes(orientation)) {
+      return orientation;
+    }
+    return content.innerWidth >= content.innerHeight
+      ? "landscape-primary" : "portrait-primary";
+  }
+
+  function reportOrientation(force = false) {
+    const orientation = contentOrientation();
+    if (force || orientation !== lastOrientation) {
+      lastOrientation = orientation;
+      sendAsyncMessage("embed:contentOrientationChanged", { orientation });
+    }
+  }
 
   function applyDynamicToolbarHeight() {
     if (dynamicToolbarHeight === null) {
@@ -155,6 +175,16 @@
     observedViewport?.addEventListener("resize", viewportChanged);
     applyDynamicToolbarHeight();
     state();
+    reportOrientation(true);
+  }, true);
+  addEventListener("DOMContentLoaded", event => {
+    if (event.target !== content.document) {
+      return;
+    }
+    sendAsyncMessage("chrome:contentloaded", {
+      docuri: content.document.documentURI || "",
+    });
+    reportOrientation();
   }, true);
   addEventListener("pagehide", event => {
     for (const [popupId, popup] of blockedPopups) {
@@ -182,7 +212,13 @@
       state();
     }
   }, true);
-  addEventListener("resize", () => state(), true);
+  addEventListener("resize", () => {
+    state();
+    reportOrientation();
+  }, true);
+  addEventListener("mozorientationchange", () => reportOrientation(), true);
+  content.screen?.orientation?.addEventListener(
+    "change", () => reportOrientation());
 
   observedViewport = content.visualViewport;
   observedViewport?.addEventListener("scroll", viewportChanged);
@@ -194,6 +230,7 @@
       case "set-endpoint":
         endpointId = Number.isSafeInteger(data.endpointId) &&
           data.endpointId > 0 ? data.endpointId : 0;
+        reportOrientation(true);
         break;
       case "scroll-to":
         content.scrollTo(data.x, data.y);

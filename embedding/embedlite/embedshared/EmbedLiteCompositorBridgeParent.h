@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_layers_EmbedLiteCompositorBridgeParent_h
-#define mozilla_layers_EmbedLiteCompositorBridgeParent_h
+#ifndef mozilla_embedlite_EmbedLiteCompositorBridgeParent_h
+#define mozilla_embedlite_EmbedLiteCompositorBridgeParent_h
 
 #include "base/task.h" // for CancelableRunnable
 #include "mozilla/Atomics.h"
@@ -133,4 +133,4 @@ private:
 } // embedlite
 } // mozilla
 
-#endif // mozilla_layers_EmbedLiteCompositorBridgeParent_h
+#endif // mozilla_embedlite_EmbedLiteCompositorBridgeParent_h

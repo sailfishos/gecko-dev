@@ -17,8 +17,6 @@
 #include "nsXULAppAPI.h"
 #include "nsString.h"
 #include "mozilla/HelperMacros.h"
-#include "EmbedLiteAppThreadChild.h"
-
 #include "application.ini.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/PreferenceSheet.h"

@@ -31,6 +31,7 @@ struct EmbedLiteChromeRestoredTab
 struct EmbedLiteChromeTabSnapshot
 {
   uint64_t id;
+  uint64_t openerId;
   uint64_t persistentId;
   uint64_t locationRevision;
   const char* location;

@@ -44,6 +44,13 @@ public:
   virtual bool SendTextEvent(const char* aCommit, const char* aPreEdit,
                              int32_t aReplacementStart,
                              int32_t aReplacementLength) = 0;
+  // As above, but aReplacementOffset is an absolute UTF-16 code-unit offset.
+  // This avoids querying a potentially stale remote selection after an
+  // acknowledged content-process edit.
+  virtual bool SendTextEventAtOffset(const char* aCommit,
+                                     const char* aPreEdit,
+                                     uint32_t aReplacementOffset,
+                                     int32_t aReplacementLength) = 0;
   virtual bool SendKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
                             int32_t aCharCode) = 0;
   virtual bool SendKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,

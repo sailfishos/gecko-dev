@@ -17,7 +17,6 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteViewChildIface.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/WidgetUtils.h"
 #include "PuppetWidgetBase.h"
@@ -29,13 +28,9 @@ namespace mozilla {
 
 namespace embedlite {
 
-class EmbedLiteWindowChild;
-
 class EmbedLitePuppetWidget : public PuppetWidgetBase
 {
 public:
-  EmbedLitePuppetWidget(EmbedLiteViewChildIface* view);
-
   static already_AddRefed<nsIWidget> CreateForChromeHost(nsIWidget* aHost);
 
   NS_DECL_ISUPPORTS_INHERITED
@@ -64,32 +59,20 @@ public:
 
   virtual bool AsyncPanZoomEnabled() const override;
 
-  virtual void SetConfirmedTargetAPZC(uint64_t aInputBlockId,
-                                      const nsTArray<ScrollableLayerGuid>& aTargets) const override;
-
-  virtual void UpdateZoomConstraints(const uint32_t& aPresShellId,
-                             const ScrollableLayerGuid::ViewID &aViewId,
-                             const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
-
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
 
   virtual WindowRenderer* GetWindowRenderer() override;
-
-  bool DoSendContentReceivedInputBlock(uint64_t aInputBlockId,
-                                       bool aPreventDefault);
-  bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,
-                                     const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags);
 
   void AddObserver(EmbedLitePuppetWidgetObserver *aObserver);
   void RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver);
   void NotifyChromeWindowFocusChanged(bool aFocused);
 
 protected:
+  EmbedLitePuppetWidget();
   virtual ~EmbedLitePuppetWidget() override;
   already_AddRefed<nsIWidget> AllocateChildPuppetWidget(
       const widget::InitData& aInitData) override;
-  EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
   virtual void ConfigureAPZCTreeManager();
   virtual void ConfigureAPZControllerThread();
@@ -98,11 +81,8 @@ protected:
   const char *Type() const override;
 
 private:
-  EmbedLitePuppetWidget();
   void RemoveIMEComposition();
-  EmbedLitePuppetWidget *GetParentPuppetWidget() const;
 
-  EmbedLiteViewChildIface* mView; // Not owned, can be null.
   nsCOMPtr<nsIWidget> mPendingChromeHost;
 
   InputContext mInputContext;

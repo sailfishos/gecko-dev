@@ -3,59 +3,90 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "EmbedLog.h"
-#include "mozilla/Assertions.h"
-#include "mozilla/Logging.h"
-
 #include "EmbedLiteApp.h"
-#include "nsISupports.h"
-#include "nsIFile.h"
-#include "base/at_exit.h"
-#include "base/message_loop.h"               // for MessageLoop
+#include "EmbedLiteAPI.h"
 
-#include "mozilla/embedlite/EmbedLiteAPI.h"
-#include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
-#include "mozilla/dom/MessageChannel.h"       // for MessageChannel
-#include "mozilla/Hal.h"
-#include "GLContextProvider.h"
-
-#include "EmbedLiteUILoop.h"
-#include "EmbedLiteSubThread.h"
-#include "GeckoLoader.h"
-
-#include "EmbedLiteAppParent.h"
-#include "EmbedLiteAppThreadParent.h"
-#include "EmbedLiteAppThreadChild.h"
-#include "EmbedLiteViewParent.h"
-#include "EmbedLiteWindowParent.h"
-#include "EmbedLiteView.h"
-#include "EmbedLiteWindow.h"
-#include "nsXULAppAPI.h"
+#include "EmbedLiteAppService.h"
+#include "EmbedLiteCompositorBridgeParent.h"
+#include "EmbedLiteJSON.h"
 #include "EmbedLiteMessagePump.h"
 #include "EmbedLiteSecurity.h"
+#include "EmbedLiteUILoop.h"
+#include "EmbedLiteWindow.h"
+#include "EmbedLiteWindowParent.h"
+#include "EmbedLog.h"
+#include "GeckoLoader.h"
+#include "GLContextProvider.h"
 
-#include "EmbedLiteCompositorBridgeParent.h"
-#include "EmbedLiteAppProcessParent.h"
+#include "base/at_exit.h"
+#include "base/message_loop.h"
+#include "mozilla/Assertions.h"
+#include "mozilla/GenericFactory.h"
+#include "mozilla/Hal.h"
+#include "mozilla/Logging.h"
+#include "mozilla/ModuleUtils.h"
+#include "mozilla/layers/CompositorThread.h"
+#include "mozilla/layers/ImageBridgeChild.h"
+#include "nsIComponentManager.h"
+#include "nsIComponentRegistrar.h"
+#include "nsIFile.h"
+#include "nsIObserver.h"
+#include "nsIObserverService.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefService.h"
+#include "nsIStyleSheetService.h"
+#include "nsNetUtil.h"
+#include "nsServiceManagerUtils.h"
+#include "nsXULAppAPI.h"
+
+#include <algorithm>
 
 namespace mozilla {
 namespace embedlite {
 
+NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteJSON)
+NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteAppService)
+
 namespace {
-class FakeWindowListener : public EmbedLiteWindowListener {};
+
+class FakeWindowListener final : public EmbedLiteWindowListener {};
 static FakeWindowListener sFakeWindowListener;
+static nsTArray<nsCString> sComponentDirs;
+
+} // namespace
+
+class EmbedLiteAppObserver final : public nsIObserver
+{
+public:
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIOBSERVER
+
+  explicit EmbedLiteAppObserver(EmbedLiteApp* aApp) : mApp(aApp) {}
+  void Detach() { mApp = nullptr; }
+
+private:
+  ~EmbedLiteAppObserver() = default;
+  EmbedLiteApp* mApp;
+};
+
+NS_IMPL_ISUPPORTS(EmbedLiteAppObserver, nsIObserver)
+
+NS_IMETHODIMP
+EmbedLiteAppObserver::Observe(nsISupports* aSubject, const char* aTopic,
+                              const char16_t* aData)
+{
+  if (mApp && mApp->mListener) {
+    mApp->mListener->OnObserve(aTopic, aData);
+  }
+  return NS_OK;
 }
 
 EmbedLiteApp* EmbedLiteApp::sSingleton = nullptr;
-static nsTArray<nsCString> sComponentDirs;
 
 EmbedLiteApp*
 EmbedLiteApp::GetInstance()
 {
   if (!sSingleton) {
-    // We don't have the arguments by hand here.  If logging has already been
-    // initialized by a previous call to LogModule::Init with the arguments
-    // passed, passing (0, nullptr) is alright here.
-    // Copied from xpcom/build/XPCOMInit.cpp
     mozilla::LogModule::Init(0, nullptr);
     sSingleton = new EmbedLiteApp();
     NS_ASSERTION(sSingleton, "not initialized");
@@ -66,99 +97,96 @@ EmbedLiteApp::GetInstance()
 EmbedLiteApp::EmbedLiteApp()
   : mListener(nullptr)
   , mUILoop(nullptr)
-  , mSubThread(nullptr)
-  , mAppParent(nullptr)
-  , mAppChild(nullptr)
-  , mEmbedType(EMBED_INVALID)
+  , mAtExitManager(nullptr)
   , mState(STOPPED)
   , mRenderType(RENDER_AUTO)
   , mProfilePath(strdup("mozembed"))
-  , mIsAsyncLoop(false)
-  , mPreDestroySent(false)
+  , mEmbeddingInitialized(false)
+  , mShutdownScheduled(false)
 {
   LOGT();
   sSingleton = this;
-
   hal::Init();
 }
 
 EmbedLiteApp::~EmbedLiteApp()
 {
   LOGT();
-  NS_ASSERTION(!mUILoop, "Main Loop not stopped before destroy");
-  NS_ASSERTION(!mSubThread, "Thread not stopped/destroyed before destroy");
-  NS_ASSERTION(mState == STOPPED, "Pre-mature deletion of still running application");
+  NS_ASSERTION(!mUILoop, "Main loop not stopped before destruction");
+  NS_ASSERTION(!mEmbeddingInitialized,
+               "Gecko not terminated before destruction");
+  NS_ASSERTION(mState == STOPPED,
+               "Premature deletion of a running application");
 
   hal::Shutdown();
-
-  sSingleton = NULL;
-  if (mProfilePath) {
-    free(mProfilePath);
-    mProfilePath = nullptr;
-  }
+  delete mAtExitManager;
+  mAtExitManager = nullptr;
+  sSingleton = nullptr;
+  free(mProfilePath);
+  mProfilePath = nullptr;
 }
 
 void
 EmbedLiteApp::SetListener(EmbedLiteAppListener* aListener)
 {
-  LOGT();
-  // Assert with XOR that either mListener or aListener is NULL and not both.
-  NS_ASSERTION((!mListener != !aListener), "App listener is supposed to be set only once by embedder");
+  NS_ASSERTION((!mListener != !aListener),
+               "App listener may only be attached or detached once");
   mListener = aListener;
 }
 
 EmbedLiteAppListener*
-EmbedLiteApp::GetListener() {
-
+EmbedLiteApp::GetListener()
+{
   if (!mListener) {
-    // No listener provided by embedder thus lazily create a stub object for EmbedLiteAppListener interface.
-    // TODO: the instance is not refcounted and is going to leak memory when EmbedLiteApp::SetListener()
-    //       is called. If embedder is supposed to set a listener always then it'd make sense
-    //       to be less defensive and to crash instead of creating a stub.
     mListener = new EmbedLiteAppListener();
   }
-
   return mListener;
 }
 
 MessageLoop*
-EmbedLiteApp::GetUILoop() {
-  return static_cast<MessageLoop*>(mUILoop);
-};
-
-void*
-EmbedLiteApp::PostTask(EMBEDTaskCallback callback, void* userData, int timeout)
+EmbedLiteApp::GetUILoop()
 {
-  RefPtr<Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::EMBEDTaskCallback",
-                                                 callback, userData);
-  if (timeout) {
-    mUILoop->PostDelayedTask(newTask.forget(), timeout);
-  } else {
-    mUILoop->PostTask(newTask.forget());
-  }
-
-  return (void*)newTask;
+  return static_cast<MessageLoop*>(mUILoop);
 }
 
 void*
-EmbedLiteApp::PostCompositorTask(EMBEDTaskCallback callback, void* userData, int timeout)
+EmbedLiteApp::PostTask(EMBEDTaskCallback aCallback, void* aUserData,
+                       int aTimeout)
 {
-  if (!mozilla::layers::CompositorThreadHolder::IsActive()) {
-    // Can't post compositor task if gecko compositor thread has not been initialized, yet.
+  if (!mUILoop) {
+    return nullptr;
+  }
+  RefPtr<CancelableRunnable> task = NS_NewCancelableRunnableFunction(
+    "mozilla::embedlite::EmbedLiteApp::PostTask",
+    [aCallback, aUserData]() { aCallback(aUserData); });
+  CancelableRunnable* handle = task.get();
+  if (aTimeout) {
+    mUILoop->PostDelayedTask(task.forget(), aTimeout);
+  } else {
+    mUILoop->PostTask(task.forget());
+  }
+  return handle;
+}
+
+void*
+EmbedLiteApp::PostCompositorTask(EMBEDTaskCallback aCallback,
+                                 void* aUserData, int aTimeout)
+{
+  if (!layers::CompositorThreadHolder::IsActive()) {
     return nullptr;
   }
 
-  RefPtr<Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::EMBEDTaskCallback",
-                                                 callback, userData);
-  MOZ_ASSERT(mozilla::layers::CompositorThread());
-
-  if (timeout) {
-    mozilla::layers::CompositorThread()->DelayedDispatch(newTask.forget(), timeout);
+  RefPtr<CancelableRunnable> task = NS_NewCancelableRunnableFunction(
+    "mozilla::embedlite::EmbedLiteApp::PostCompositorTask",
+    [aCallback, aUserData]() { aCallback(aUserData); });
+  CancelableRunnable* handle = task.get();
+  MOZ_ASSERT(layers::CompositorThread());
+  if (aTimeout) {
+    layers::CompositorThread()->DelayedDispatch(task.forget(), aTimeout);
   } else {
-    mozilla::layers::CompositorThread()->Dispatch(newTask.forget());
+    layers::CompositorThread()->Dispatch(task.forget());
   }
-
-  return (void*)newTask;
+  return handle;
 }
 
 void
@@ -170,568 +198,506 @@ EmbedLiteApp::CancelTask(void* aTask)
 }
 
 void
-EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
-{
-  LOGT();
-  NS_ASSERTION(aApp->mState == STARTING, "Wrong timing");
-  if (aApp->mEmbedType == EMBED_THREAD) {
-    if (!aApp->mListener ||
-        !aApp->mListener->ExecuteChildThread()) {
-      // If toolkit hasn't started a child thread we have to create the thread on our own
-      aApp->mSubThread = new EmbedLiteSubThread(aApp);
-      if (!aApp->mSubThread->StartEmbedThread()) {
-        LOGE("Failed to start child thread");
-        MOZ_CRASH("Failed to initialize the EmbedLite child thread");
-      }
-    }
-  } else if (aApp->mEmbedType == EMBED_PROCESS) {
-    aApp->mAppParent = EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent();
-  }
-}
-
-void
 EmbedLiteApp::SetProfilePath(const char* aPath)
 {
-  NS_ASSERTION(mState == STOPPED, "SetProfilePath must be called before Start");
-  if (mProfilePath)
-    free(mProfilePath);
-
+  NS_ASSERTION(mState == STOPPED,
+               "SetProfilePath must be called before Start");
+  free(mProfilePath);
   mProfilePath = aPath ? strdup(aPath) : nullptr;
 }
 
 EmbedLiteMessagePump*
-EmbedLiteApp::CreateEmbedLiteMessagePump(EmbedLiteMessagePumpListener* aListener)
+EmbedLiteApp::CreateEmbedLiteMessagePump(
+    EmbedLiteMessagePumpListener* aListener)
 {
   return new EmbedLiteMessagePump(aListener);
 }
 
 bool
-EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aEventLoop)
+EmbedLiteApp::StartInternal(EmbedLiteUILoop* aLoop)
 {
-  LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
-  NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
-  NS_ASSERTION(!mUILoop, "Start called twice");
-  mPreDestroySent = false;
+  if (!aLoop || mState != STOPPED || mUILoop) {
+    return false;
+  }
+
+  mAtExitManager = new base::AtExitManager();
+  mUILoop = aLoop;
+  mShutdownScheduled = false;
   SetState(STARTING);
-  mEmbedType = aEmbedType;
-  mUILoop = aEventLoop->GetMessageLoop();
-  mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp",
-                                        &EmbedLiteApp::StartChild, this));
+  mUILoop->PostTask(NewRunnableFunction(
+    "mozilla::embedlite::EmbedLiteApp::StartRuntime",
+    &EmbedLiteApp::StartRuntimeTask, this));
   mUILoop->StartLoop();
-  mIsAsyncLoop = true;
   return true;
 }
 
 bool
-EmbedLiteApp::Start(EmbedType aEmbedType)
+EmbedLiteApp::StartWithCustomPump(EmbedLiteMessagePump* aMessageLoop)
 {
-  LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
-  NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
-  NS_ASSERTION(!mUILoop, "Start called twice");
-  mPreDestroySent = false;
-  SetState(STARTING);
-  mEmbedType = aEmbedType;
-  base::AtExitManager exitManager;
-  mUILoop = new EmbedLiteUILoop();
-  mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::StartChild",
-                                        &EmbedLiteApp::StartChild, this));
-  mUILoop->StartLoop();
-  if (mSubThread) {
-    mSubThread->Stop();
-    mSubThread = nullptr;
-  } else if (mListener) {
-    NS_ASSERTION(mListener->StopChildThread(),
-                      "StopChildThread must be implemented when ExecuteChildThread defined");
-  }
-  if (mUILoop) {
-    delete mUILoop;
-    mUILoop = NULL;
-  }
+  return aMessageLoop &&
+    StartInternal(aMessageLoop->GetMessageLoop());
+}
 
-  if (mListener) {
-    mListener->Destroyed();
+bool
+EmbedLiteApp::Start()
+{
+  EmbedLiteUILoop* loop = new EmbedLiteUILoop();
+  const bool started = StartInternal(loop);
+  if (!started) {
+    delete loop;
+    return false;
   }
-
+  delete loop;
+  if (mUILoop == loop) {
+    mUILoop = nullptr;
+  }
   return true;
 }
 
 void
-EmbedLiteApp::AddManifestLocation(const char* manifest)
+EmbedLiteApp::StartRuntimeTask(EmbedLiteApp* aApp)
 {
-  if (mState == INITIALIZED) {
-    (void)mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
-  } else {
-    sComponentDirs.AppendElement(nsCString(manifest));
-  }
-}
-
-bool
-EmbedLiteApp::InitializeChildThread()
-{
-  NS_ENSURE_TRUE(mEmbedType == EMBED_THREAD, false);
-  LOGT("mUILoop:%p, current:%p", mUILoop, MessageLoop::current());
-  NS_ASSERTION(MessageLoop::current() != mUILoop,
-               "Current message loop must be null and not equals to mUILoop");
-
-  for (unsigned int i = 0; i < sComponentDirs.Length(); i++) {
-    nsCOMPtr<nsIFile> f;
-    NS_NewNativeLocalFile(sComponentDirs[i], getter_AddRefs(f));
-    if (f) {
-      LOGT("Loading manifest: %s", sComponentDirs[i].get());
-      XRE_AddManifestLocation(NS_APP_LOCATION, f);
-    } else {
-      NS_ERROR(nsPrintfCString("Failed to create nsIFile for manifest location: %s", sComponentDirs[i].get()).get());
+  if (!aApp || aApp->mState != STARTING) {
+    if (aApp) {
+      aApp->MaybeFinishShutdown();
     }
+    return;
   }
 
-  return GeckoLoader::InitEmbedding(mProfilePath);
-}
+  if (!aApp->InitializeRuntime()) {
+    LOGE("Failed to initialize Gecko on the toolkit main thread");
+    aApp->SetState(DESTROYING);
+    aApp->MaybeFinishShutdown();
+    return;
+  }
 
-void
-EmbedLiteApp::ConnectChildThread()
-{
-  mAppParent = new EmbedLiteAppThreadParent();
-  mAppChild = new EmbedLiteAppThreadChild(mUILoop);
-  mAppChild->Init(mAppParent);
+  aApp->SetState(INITIALIZED);
+  if (aApp->mListener) {
+    aApp->mListener->Initialized();
+  }
+
+  nsCOMPtr<nsIObserverService> observers =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observers) {
+    observers->NotifyObservers(nullptr, "embedliteInitialized", nullptr);
+  }
 }
 
 bool
-EmbedLiteApp::StartChildThread()
+EmbedLiteApp::InitializeRuntime()
 {
-  if (!InitializeChildThread()) {
+  MOZ_ASSERT(MessageLoop::current() == mUILoop);
+
+  for (const nsCString& manifest : sComponentDirs) {
+    nsCOMPtr<nsIFile> file;
+    NS_NewNativeLocalFile(manifest, getter_AddRefs(file));
+    if (!file) {
+      NS_ERROR(nsPrintfCString("Invalid component manifest: %s",
+                               manifest.get()).get());
+      return false;
+    }
+    XRE_AddManifestLocation(NS_APP_LOCATION, file);
+  }
+
+  if (!GeckoLoader::InitEmbedding(mProfilePath)) {
+    return false;
+  }
+  mEmbeddingInitialized = true;
+
+  if (!InitializeAppServices()) {
     return false;
   }
 
-  ConnectChildThread();
+  nsCOMPtr<nsIPrefBranch> prefs =
+    do_GetService(NS_PREFSERVICE_CONTRACTID);
+  if (prefs) {
+    prefs->SetBoolPref("layers.offmainthreadcomposition.enabled", true);
+  }
+  mObserver = new EmbedLiteAppObserver(this);
   return true;
 }
 
 bool
-EmbedLiteApp::StopChildThread()
+EmbedLiteApp::InitializeAppServices()
 {
-  NS_ENSURE_TRUE(mEmbedType == EMBED_THREAD, false);
-  LOGT("mUILoop:%p, current:%p", mUILoop, MessageLoop::current());
-
-  if (!mUILoop || !MessageLoop::current() ||
-      mUILoop == MessageLoop::current()) {
-    NS_ERROR("Wrong thread? StartChildThread called? Stop() already called?");
+  nsCOMPtr<nsIComponentRegistrar> registrar;
+  if (NS_FAILED(NS_GetComponentRegistrar(getter_AddRefs(registrar))) ||
+      !registrar) {
     return false;
   }
 
-  const bool hadEmbedThreadChild = mAppChild;
-
-  if (mAppChild) {
-    mAppChild->Close();
+  nsCOMPtr<nsIFactory> appFactory =
+    new mozilla::GenericFactory(EmbedLiteAppServiceConstructor);
+  nsCID appCID = NS_EMBED_LITE_APP_SERVICE_CID;
+  if (NS_FAILED(registrar->RegisterFactory(
+        appCID, NS_EMBED_LITE_APP_SERVICE_CLASSNAME,
+        NS_EMBED_LITE_APP_CONTRACTID, appFactory))) {
+    return false;
   }
 
-  if (hadEmbedThreadChild) {
-    GeckoLoader::TermEmbedding();
-  }
-
-  return true;
-}
-
-void _FinalStop(EmbedLiteApp* app)
-{
-  app->Shutdown();
-}
-
-void
-EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
-{
-  if (app->mAppParent == nullptr) {
-    LOGE("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!app->mAppParent is null, wrong logic?");
-    return;
-  }
-  (void)app->mAppParent->SendPreDestroy();
+  nsCOMPtr<nsIFactory> jsonFactory =
+    new mozilla::GenericFactory(EmbedLiteJSONConstructor);
+  nsCID jsonCID = NS_IEMBEDLITEJSON_IID;
+  return NS_SUCCEEDED(registrar->RegisterFactory(
+    jsonCID, NS_EMBED_LITE_JSON_SERVICE_CLASSNAME,
+    NS_EMBED_LITE_JSON_CONTRACTID, jsonFactory));
 }
 
 void
-EmbedLiteApp::MaybePreDestroy()
+EmbedLiteApp::AddManifestLocation(const char* aManifest)
 {
-  if (mState != DESTROYING || mPreDestroySent || !mViews.empty() ||
-      !mWindows.empty()) {
+  if (!aManifest || !*aManifest) {
     return;
   }
 
-  mPreDestroySent = true;
-  mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
-                                        &EmbedLiteApp::PreDestroy, this));
+  if (mState != INITIALIZED) {
+    sComponentDirs.AppendElement(nsDependentCString(aManifest));
+    return;
+  }
+
+  nsCOMPtr<nsIFile> file;
+  NS_NewNativeLocalFile(nsDependentCString(aManifest), getter_AddRefs(file));
+  if (file) {
+    XRE_AddManifestLocation(NS_APP_LOCATION, file);
+  }
 }
 
 void
 EmbedLiteApp::Stop()
 {
-  LOGT();
-  NS_ASSERTION(mState == STARTING || mState == INITIALIZED, "Wrong timing");
-
-  if (mState == INITIALIZED) {
-    if (mViews.empty() && mWindows.empty()) {
-      mPreDestroySent = true;
-      mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
-                                            &EmbedLiteApp::PreDestroy, this));
-    } else {
-      for (auto viewPair : mViews) {
-        viewPair.second->Destroy();
-      }
-      for (auto winPair: mWindows) {
-        winPair.second->Destroy();
-      }
-    }
+  if (mState != STARTING && mState != INITIALIZED) {
+    return;
   }
 
+  const State oldState = mState;
   SetState(DESTROYING);
+  if (oldState == INITIALIZED) {
+    std::vector<EmbedLiteWindow*> windows;
+    windows.reserve(mWindows.size());
+    for (const auto& entry : mWindows) {
+      windows.push_back(entry.second);
+    }
+    for (EmbedLiteWindow* window : windows) {
+      window->Destroy();
+    }
+  }
+  MaybeFinishShutdown();
 }
 
 void
-EmbedLiteApp::Shutdown()
+EmbedLiteApp::MaybeFinishShutdown()
 {
-  LOGT();
-  NS_ASSERTION(mState == DESTROYING, "Wrong timing");
+  if (mState != DESTROYING || !mWindows.empty() || mShutdownScheduled ||
+      !mUILoop) {
+    return;
+  }
+  mShutdownScheduled = true;
+  mUILoop->PostTask(NewRunnableFunction(
+    "mozilla::embedlite::EmbedLiteApp::FinishShutdown",
+    &EmbedLiteApp::FinishShutdownTask, this));
+}
 
-  if (mIsAsyncLoop) {
-    if (mEmbedType == EMBED_THREAD) {
-      RefPtr<EmbedLiteAppThreadParent> appParent =
-        static_cast<EmbedLiteAppThreadParent*>(mAppParent);
-      if (mSubThread) {
-        mSubThread->Stop();
-        mSubThread = nullptr;
-        mAppChild = nullptr;
-      } else if (mListener) {
-        NS_ASSERTION(mListener->StopChildThread(),
-            "StopChildThread must be implemented when ExecuteChildThread defined");
-        mAppChild = nullptr;
-      }
-      if (appParent && appParent->CanSend()) {
-        appParent->Close();
-      }
-      mAppParent = nullptr;
-    } else if (mEmbedType == EMBED_PROCESS) {
-      delete mAppParent;
-    }
+void
+EmbedLiteApp::FinishShutdownTask(EmbedLiteApp* aApp)
+{
+  if (aApp) {
+    aApp->FinishShutdown();
+  }
+}
+
+void
+EmbedLiteApp::FinishShutdown()
+{
+  if (mState != DESTROYING || !mWindows.empty()) {
+    mShutdownScheduled = false;
+    return;
   }
 
-  mUILoop->DoQuit();
-
-  if (!mIsAsyncLoop) {
-    delete mUILoop;
-    mUILoop = nullptr;
+  RemoveAllObservers();
+  if (mObserver) {
+    mObserver->Detach();
+    mObserver = nullptr;
   }
 
+  if (mEmbeddingInitialized) {
+    layers::ImageBridgeChild::ShutDown();
+    GeckoLoader::TermEmbedding();
+    mEmbeddingInitialized = false;
+  }
+
+  EmbedLiteUILoop* loop = mUILoop;
+  if (loop) {
+    loop->DoQuit();
+  }
+  mUILoop = nullptr;
+  mShutdownScheduled = false;
+
+  delete mAtExitManager;
+  mAtExitManager = nullptr;
+  SetState(STOPPED);
   if (mListener) {
     mListener->Destroyed();
   }
-
-  SetState(STOPPED);
 }
 
 void
 EmbedLiteApp::SetBoolPref(const char* aName, bool aValue)
 {
-  NS_ENSURE_TRUE(mState == INITIALIZED, );
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  (void)mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
+  if (mState != INITIALIZED || !aName) {
+    return;
+  }
+  nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  if (prefs) {
+    prefs->SetBoolPref(aName, aValue);
+  }
 }
 
 void
 EmbedLiteApp::SetCharPref(const char* aName, const char* aValue)
 {
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  (void)mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
+  if (mState != INITIALIZED || !aName || !aValue) {
+    return;
+  }
+  nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  if (prefs) {
+    prefs->SetCharPref(aName, nsDependentCString(aValue));
+  }
 }
 
 void
 EmbedLiteApp::SetIntPref(const char* aName, int aValue)
 {
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  (void)mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
+  if (mState != INITIALIZED || !aName) {
+    return;
+  }
+  nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  if (prefs) {
+    prefs->SetIntPref(aName, aValue);
+  }
+}
+
+static void
+LoadStyleSheet(const char* aUri, bool aEnable, uint32_t aType)
+{
+  if (!aUri) {
+    return;
+  }
+  nsCOMPtr<nsIStyleSheetService> service =
+    do_GetService("@mozilla.org/content/style-sheet-service;1");
+  nsCOMPtr<nsIURI> uri;
+  if (!service || NS_FAILED(NS_NewURI(getter_AddRefs(uri), aUri)) || !uri) {
+    return;
+  }
+  if (aEnable) {
+    service->LoadAndRegisterSheet(uri, aType);
+  } else {
+    service->UnregisterSheet(uri, aType);
+  }
 }
 
 void
 EmbedLiteApp::LoadGlobalStyleSheet(const char* aUri, bool aEnable)
 {
-  LOGT();
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  (void)mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
+  if (mState == INITIALIZED) {
+    LoadStyleSheet(aUri, aEnable, nsIStyleSheetService::AGENT_SHEET);
+  }
 }
 
 void
-EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
+EmbedLiteApp::LoadUserStyleSheet(const char* aUri, bool aEnable)
 {
-  LOGT("topic:%s", aMessageName);
-  NS_ENSURE_TRUE(mState == INITIALIZED, );
-  (void)mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
+  if (mState == INITIALIZED) {
+    LoadStyleSheet(aUri, aEnable, nsIStyleSheetService::USER_SHEET);
+  }
 }
 
 void
-EmbedLiteApp::AddObserver(const char* aMessageName)
+EmbedLiteApp::SendObserve(const char* aTopic, const char16_t* aData)
 {
-  LOGT("topic:%s", aMessageName);
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  (void)mAppParent->SendAddObserver(nsDependentCString(aMessageName));
+  if (mState != INITIALIZED || !aTopic) {
+    return;
+  }
+  nsCOMPtr<nsIObserverService> service =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (service) {
+    service->NotifyObservers(nullptr, aTopic, aData);
+  }
 }
 
 void
-EmbedLiteApp::RemoveObserver(const char* aMessageName)
+EmbedLiteApp::AddObserver(const char* aTopic)
 {
-  LOGT("topic:%s", aMessageName);
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  (void)mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
+  if (mState != INITIALIZED || !aTopic || !*aTopic || !mObserver ||
+      std::find(mObservedTopics.begin(), mObservedTopics.end(), aTopic) !=
+        mObservedTopics.end()) {
+    return;
+  }
+  nsCOMPtr<nsIObserverService> service =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (service && NS_SUCCEEDED(service->AddObserver(
+                   mObserver, aTopic, false))) {
+    mObservedTopics.emplace_back(aTopic);
+  }
 }
 
-void EmbedLiteApp::AddObservers(const std::vector<std::string> &observersList)
+void
+EmbedLiteApp::RemoveObserver(const char* aTopic)
 {
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-
-  nsTArray<nsCString> list;
-  for (const auto &observer : observersList) {
-      list.AppendElement(nsDependentCString(observer.c_str()));
+  if (!aTopic || !mObserver) {
+    return;
   }
-
-  (void)mAppParent->SendAddObservers(list);
+  auto topic = std::find(mObservedTopics.begin(), mObservedTopics.end(),
+                         aTopic);
+  if (topic == mObservedTopics.end()) {
+    return;
+  }
+  nsCOMPtr<nsIObserverService> service =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (service) {
+    service->RemoveObserver(mObserver, aTopic);
+  }
+  mObservedTopics.erase(topic);
 }
 
-void EmbedLiteApp::RemoveObservers(const std::vector<std::string>& observersList)
+void
+EmbedLiteApp::AddObservers(const std::vector<std::string>& aObservers)
 {
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-
-  nsTArray<nsCString> list;
-  for (const auto &observer : observersList) {
-      list.AppendElement(nsDependentCString(observer.c_str()));
+  for (const std::string& observer : aObservers) {
+    AddObserver(observer.c_str());
   }
-
-  (void)mAppParent->SendRemoveObservers(list);
 }
 
-EmbedLiteView*
-EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t aParentBrowsingContext, bool aIsPrivateWindow, bool isDesktopMode, bool isHidden)
+void
+EmbedLiteApp::RemoveObservers(const std::vector<std::string>& aObservers)
 {
-  LOGT();
-  NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
-  if (!aWindow || aWindow->IsChromeHosted()) {
-    NS_WARNING(
-      "Legacy EmbedLite views cannot be added to a chrome-hosted window");
-    return nullptr;
+  for (const std::string& observer : aObservers) {
+    RemoveObserver(observer.c_str());
   }
-  EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
-  Maybe<EmbedLiteBrowserInitData> browserInit = appParent->TakeBrowserInit();
-  if (!browserInit && aParentBrowsingContext) {
-    NS_WARNING("Content-created EmbedLite views require browser initialization data");
-    return nullptr;
-  }
-  static uint32_t sViewCreateID = 0;
-  sViewCreateID++;
+}
 
-  PEmbedLiteViewParent* viewParent =
-      appParent->AllocPEmbedLiteViewParent(aWindow->GetUniqueID(), sViewCreateID,
-                                           aParent, aIsPrivateWindow, isDesktopMode,
-                                           isHidden, browserInit);
-  viewParent = appParent->SendPEmbedLiteViewConstructor(viewParent,
-                                                        aWindow->GetUniqueID(), sViewCreateID,
-                                                        aParent, aIsPrivateWindow, isDesktopMode,
-                                                        isHidden, browserInit);
-  EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
-  mViews[sViewCreateID] = view;
-  return view;
+void
+EmbedLiteApp::RemoveAllObservers()
+{
+  nsCOMPtr<nsIObserverService> service =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (service && mObserver) {
+    for (const std::string& topic : mObservedTopics) {
+      service->RemoveObserver(mObserver, topic.c_str());
+    }
+  }
+  mObservedTopics.clear();
 }
 
 EmbedLiteWindow*
-EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aListener)
+EmbedLiteApp::CreateWindow(int aWidth, int aHeight,
+                           EmbedLiteWindowListener* aListener)
 {
-  return CreateWindowInternal(width, height, nullptr, false, aListener);
+  return CreateChromeWindow(aWidth, aHeight, "about:blank", aListener,
+                            false);
 }
 
 EmbedLiteWindow*
-EmbedLiteApp::CreateChromeWindow(int width, int height,
-                                 const char* initialContentURI,
-                                 EmbedLiteWindowListener* aListener)
+EmbedLiteApp::CreateChromeWindow(int aWidth, int aHeight,
+                                 const char* aInitialContentURI,
+                                 EmbedLiteWindowListener* aListener,
+                                 bool aPrivateBrowsing)
 {
-  if (mEmbedType != EMBED_THREAD || width <= 0 || height <= 0 ||
-      width > UINT16_MAX || height > UINT16_MAX) {
-    NS_WARNING(
-      "Chrome-hosted windows require thread embedding and valid dimensions");
-    return nullptr;
-  }
-  const char* contentURI = initialContentURI && *initialContentURI
-                             ? initialContentURI
-                             : "about:blank";
-  return CreateWindowInternal(width, height, contentURI, true, aListener);
+  const char* uri = aInitialContentURI && *aInitialContentURI
+                      ? aInitialContentURI : "about:blank";
+  return CreateWindowInternal(aWidth, aHeight, uri, aPrivateBrowsing,
+                              aListener);
 }
 
 EmbedLiteWindow*
-EmbedLiteApp::CreateChromeTabWindow(int width, int height,
-                                    EmbedLiteWindowListener* aListener)
+EmbedLiteApp::CreateChromeTabWindow(int aWidth, int aHeight,
+                                    EmbedLiteWindowListener* aListener,
+                                    bool aPrivateBrowsing)
 {
-  if (mEmbedType != EMBED_THREAD || width <= 0 || height <= 0 ||
-      width > UINT16_MAX || height > UINT16_MAX) {
-    NS_WARNING(
-      "Chrome-hosted windows require thread embedding and valid dimensions");
-    return nullptr;
-  }
-  return CreateWindowInternal(width, height, "", true, aListener);
+  return CreateWindowInternal(aWidth, aHeight, "", aPrivateBrowsing,
+                              aListener);
 }
 
 EmbedLiteWindow*
-EmbedLiteApp::CreateWindowInternal(int width, int height,
-                                   const char* initialContentURI,
-                                   bool chromeHosted,
+EmbedLiteApp::CreateWindowInternal(int aWidth, int aHeight,
+                                   const char* aInitialContentURI,
+                                   bool aPrivateBrowsing,
                                    EmbedLiteWindowListener* aListener)
 {
-  LOGT();
-  NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
-  static uint32_t sWindowCreateID = 0;
-  sWindowCreateID++;
-
+  if (mState != INITIALIZED || aWidth <= 0 || aHeight <= 0 ||
+      aWidth > UINT16_MAX || aHeight > UINT16_MAX) {
+    return nullptr;
+  }
   if (!aListener) {
-      aListener = &sFakeWindowListener;
+    aListener = &sFakeWindowListener;
   }
 
-  nsAutoCString chromeInitialURI;
-  if (chromeHosted && initialContentURI) {
-    chromeInitialURI.Assign(initialContentURI);
+  static uint32_t sWindowCreateID = 0;
+  uint32_t id = ++sWindowCreateID;
+  if (!id) {
+    id = ++sWindowCreateID;
   }
 
-  EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
-  PEmbedLiteWindowParent* windowParent =
-    appParent->AllocPEmbedLiteWindowParent(
-      width, height, sWindowCreateID,
-      reinterpret_cast<uintptr_t>(aListener), chromeHosted,
-      chromeInitialURI);
-  if (!windowParent) {
-    return nullptr;
-  }
-  windowParent = appParent->SendPEmbedLiteWindowConstructor(
-    windowParent, width, height, sWindowCreateID,
-    reinterpret_cast<uintptr_t>(aListener), chromeHosted,
-    chromeInitialURI);
-  if (!windowParent) {
-    return nullptr;
-  }
-  EmbedLiteWindow* window =
-    new EmbedLiteWindow(this, windowParent, sWindowCreateID, chromeHosted);
-  mWindows[sWindowCreateID] = window;
+  RefPtr<EmbedLiteWindowParent> parent = new EmbedLiteWindowParent(
+    aWidth, aHeight, id, aListener,
+    nsDependentCString(aInitialContentURI ? aInitialContentURI : ""),
+    aPrivateBrowsing);
+  EmbedLiteWindowParent::Register(parent);
+
+  EmbedLiteWindow* window = new EmbedLiteWindow(this, parent, id);
+  mWindows.emplace(id, window);
+  parent->Initialize();
   return window;
 }
 
-EmbedLiteSecurity* EmbedLiteApp::CreateSecurity(const char *aStatus, unsigned int aState) const
-{
-    LOGT();
-    NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
-
-    EmbedLiteSecurity * embedSecurity = new EmbedLiteSecurity(aStatus, aState);
-    return embedSecurity;
-}
-
 void
-EmbedLiteApp::ChildReadyToDestroy()
+EmbedLiteApp::WindowDestroyed(uint32_t aId)
 {
-  LOGT();
-  if (mState == DESTROYING) {
-    mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::_FinalStop",
-                                          &_FinalStop, this));
+  const auto found = mWindows.find(aId);
+  if (found == mWindows.end()) {
+    return;
   }
-  if (mEmbedType == EMBED_PROCESS) {
-      mAppParent = nullptr;
-  }
-}
-
-uint32_t
-EmbedLiteApp::CreateWindowRequested(const uint32_t &chromeFlags,
-                                    const bool &hidden,
-                                    const uint32_t &parentId,
-                                    const uintptr_t &parentBrowsingContext)
-{
-  EmbedLiteView* view = nullptr;
-  std::map<uint32_t, EmbedLiteView*>::iterator it;
-  for (it = mViews.begin(); it != mViews.end(); it++) {
-    if (it->second && it->second->GetUniqueID() == parentId) {
-      LOGT("Found parent view:%p", it->second);
-      view = it->second;
-      break;
-    }
-  }
-  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, hidden, view, parentBrowsingContext) : 0;
-  return viewId;
-}
-
-void
-EmbedLiteApp::ViewDestroyed(uint32_t id)
-{
-  LOGT("id:%i", id);
-  std::map<uint32_t, EmbedLiteView*>::iterator it = mViews.find(id);
-  if (it != mViews.end()) {
-    EmbedLiteView* view = it->second;
-    mViews.erase(it);
-    delete view;
-  }
-  if (mViews.empty()) {
-    if (mListener) {
-      mListener->LastViewDestroyed();
-    }
-    MaybePreDestroy();
-  }
-}
-
-void
-EmbedLiteApp::WindowDestroyed(uint32_t id)
-{
-  LOGT("id:%i", id);
-  std::map<uint32_t, EmbedLiteWindow*>::iterator it = mWindows.find(id);
-  if (it != mWindows.end()) {
-    EmbedLiteWindow* win = it->second;
-    mWindows.erase(it);
-    delete win;
-  }
+  EmbedLiteWindow* window = found->second;
+  mWindows.erase(found);
+  delete window;
   if (mWindows.empty()) {
     if (mListener) {
       mListener->LastWindowDestroyed();
     }
-    MaybePreDestroy();
+    MaybeFinishShutdown();
   }
 }
 
-void EmbedLiteApp::DestroyView(EmbedLiteView* aView)
+void
+EmbedLiteApp::DestroyWindow(EmbedLiteWindow* aWindow)
 {
-  LOGT();
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  for (auto elm : mViews) {
-    if (aView == elm.second) {
-      elm.second->Destroy();
+  if (!aWindow || (mState != INITIALIZED && mState != DESTROYING)) {
+    return;
+  }
+  for (const auto& entry : mWindows) {
+    if (entry.second == aWindow) {
+      aWindow->Destroy();
       return;
     }
   }
-  MOZ_ASSERT(false, "Invalid EmbedLiteView pointer!");
+  MOZ_ASSERT_UNREACHABLE("Invalid EmbedLiteWindow pointer");
 }
 
-void EmbedLiteApp::DestroyWindow(EmbedLiteWindow* aWindow)
+int
+EmbedLiteApp::GetNumberOfWindows() const
 {
-  LOGT();
-  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  for (auto elm : mWindows) {
-    if (aWindow == elm.second) {
-      elm.second->Destroy();
-      return;
-    }
-  }
-  MOZ_ASSERT(false, "Invalid EmbedLiteWindow pointer!");
+  return mWindows.size();
 }
 
-int EmbedLiteApp::GetNumberOfViews() const
+EmbedLiteSecurity*
+EmbedLiteApp::CreateSecurity(const char* aStatus, unsigned int aState) const
 {
-    return mViews.size();
+  return new EmbedLiteSecurity(aStatus, aState);
 }
 
-int EmbedLiteApp::GetNumberOfWindows() const
+void
+EmbedLiteApp::DestroySecurity(EmbedLiteSecurity* aSecurity) const
 {
-    return mWindows.size();
-}
-
-void EmbedLiteApp::DestroySecurity(EmbedLiteSecurity* aSecurity) const
-{
-    LOGT();
-    NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-
-    delete aSecurity;
+  delete aSecurity;
 }
 
 void
@@ -751,7 +717,7 @@ void
 EmbedLiteApp::SetEGLDisplay(void* aDisplay)
 {
   NS_ASSERTION(mState == STOPPED,
-               "SetEGLDisplay must be called before starting Gecko");
+               "SetEGLDisplay must be called before Gecko starts");
   if (mState != STOPPED) {
     return;
   }
@@ -760,23 +726,6 @@ EmbedLiteApp::SetEGLDisplay(void* aDisplay)
 #else
   MOZ_ASSERT(!aDisplay);
 #endif
-}
-
-void
-EmbedLiteApp::Initialized()
-{
-  LOGT();
-  NS_ASSERTION(mState == STARTING || mState == DESTROYING, "Wrong timing");
-
-  if (mState == DESTROYING) {
-    MaybePreDestroy();
-    return;
-  }
-
-  SetState(INITIALIZED);
-  if (mListener) {
-    mListener->Initialized();
-  }
 }
 
 void

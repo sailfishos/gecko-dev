@@ -1,0 +1,74 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+namespace mozilla {
+namespace embedlite {
+
+struct EmbedLiteChromeHistoryData {
+  nsCString location;
+  nsString title;
+};
+
+struct EmbedLiteChromeTabRestoreData {
+  uint64_t persistentId;
+  EmbedLiteChromeHistoryData[] history;
+  int32_t selectedHistoryIndex;
+};
+
+struct EmbedLiteChromeTabData {
+  uint64_t id;
+  uint64_t openerId;
+  uint64_t persistentId;
+  uint64_t locationRevision;
+  nsCString location;
+  nsString title;
+  bool loading;
+  bool closing;
+  bool discarded;
+  bool canGoBack;
+  bool canGoForward;
+  int32_t progress;
+  int64_t current;
+  int64_t total;
+};
+
+struct EmbedLiteChromeSessionData {
+  uint64_t revision;
+  uint64_t selectedTabId;
+  EmbedLiteChromeTabData[] tabs;
+};
+
+struct EmbedLiteChromeBeforeUnloadData {
+  uint64_t requestId;
+  uint64_t tabId;
+  uint64_t persistentId;
+  nsString title;
+  nsString text;
+  nsString leaveLabel;
+  nsString stayLabel;
+};
+
+struct EmbedLiteChromeContentStateData {
+  uint64_t tabId;
+  uint64_t persistentId;
+  uint64_t revision;
+  uint64_t locationRevision;
+  nsCString securityStatus;
+  uint32_t securityState;
+  bool fullscreen;
+  bool firstPaint;
+  int32_t firstPaintX;
+  int32_t firstPaintY;
+  uint32_t scrollWidth;
+  uint32_t scrollHeight;
+  int32_t scrollX;
+  int32_t scrollY;
+  double viewportX;
+  double viewportY;
+  double viewportWidth;
+  double viewportHeight;
+};
+
+} // namespace embedlite
+} // namespace mozilla

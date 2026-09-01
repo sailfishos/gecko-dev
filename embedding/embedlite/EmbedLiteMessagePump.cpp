@@ -146,15 +146,17 @@ EmbedLiteMessagePump::PostTask(EMBEDTaskCallback callback,
   if (!mEmbedPump->GetLoop()) {
     return nullptr;
   }
-  RefPtr<mozilla::Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteMessagePump::EMBEDTaskCallback",
-                                                          callback, userData);
+  RefPtr<CancelableRunnable> newTask = NS_NewCancelableRunnableFunction(
+    "mozilla::embedlite::EmbedLiteMessagePump::EMBEDTaskCallback",
+    [callback, userData]() { callback(userData); });
+  CancelableRunnable* handle = newTask.get();
   if (timeout) {
     mEmbedPump->GetLoop()->PostDelayedTask(newTask.forget(), timeout);
   } else {
     mEmbedPump->GetLoop()->PostTask(newTask.forget());
   }
 
-  return (void*)newTask;
+  return handle;
 }
 
 void

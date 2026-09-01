@@ -18,7 +18,7 @@ EmbedLite frames in order to publish the completed offscreen image.
  .../test_safe_area_inset_usage.html           |  71 +++++++++
  dom/interfaces/base/nsIDOMWindowUtils.idl     |   8 +-
  gfx/gl/GLConsts.h                             |   2 +
- gfx/gl/GLContext.cpp                          |   9 ++
+ gfx/gl/GLContext.cpp                          |  10 ++
  gfx/gl/GLContext.h                            |  29 ++--
  gfx/gl/GLContextEAGL.h                        |   2 +-
  gfx/gl/GLLibraryEGL.cpp                       |  17 +++
@@ -58,7 +58,7 @@ EmbedLite frames in order to publish the completed offscreen image.
  widget/nsBaseAppShell.cpp                     |   4 +-
  widget/nsBaseAppShell.h                       |   2 +-
  .../windows/InProcessWinCompositorWidget.cpp  |   4 +-
- 47 files changed, 790 insertions(+), 84 deletions(-)
+ 47 files changed, 791 insertions(+), 84 deletions(-)
  create mode 100644 dom/base/test/meta_viewport/test_safe_area_inset_usage.html
  create mode 100644 widget/EmbedLiteCompositorWidget.cpp
  create mode 100644 widget/EmbedLiteCompositorWidget.h
@@ -302,10 +302,18 @@ index 69b1fcae1ee3..ec873078dcfc 100644
   * GENERATED FILE, DO NOT MODIFY DIRECTLY.
   * This is a file generated directly from the official OpenGL registry
 diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
-index 34b27ae78886..327bc6fda0ae 100644
+index 34b27ae78886..1fefc9cb0d20 100644
 --- a/gfx/gl/GLContext.cpp
 +++ b/gfx/gl/GLContext.cpp
-@@ -2743,6 +2743,15 @@ bool GLContext::CreateOffscreenDefaultFb(const gfx::IntSize& size) {
+@@ -2000,6 +2000,7 @@ void GLContext::MarkDestroyed() {
+ 
+   // Null these before they're naturally nulled after dtor, as we want GLContext
+   // to still be alive in *their* dtors.
++  mScreen = nullptr;
+   mBlitHelper = nullptr;
+   mReadTexImageHelper = nullptr;
+ 
+@@ -2743,6 +2744,15 @@ bool GLContext::CreateOffscreenDefaultFb(const gfx::IntSize& size) {
    return bool(mOffscreenDefaultFb);
  }
  

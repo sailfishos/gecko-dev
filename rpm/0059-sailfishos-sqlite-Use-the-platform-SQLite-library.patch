@@ -555,12 +555,12 @@ index 83cb76cdb88a..cf20e451e07a 100644
  
  int AutoSQLiteLifetime::sSingletonEnforcer = 0;
 diff --git a/toolkit/xre/moz.build b/toolkit/xre/moz.build
-index 114fad146337..3065155e976e 100644
+index b469578830e1..96fa5795df98 100644
 --- a/toolkit/xre/moz.build
 +++ b/toolkit/xre/moz.build
-@@ -270,6 +270,8 @@ LOCAL_INCLUDES += [
- if CONFIG["MOZ_EMBEDLITE"]:
-     LOCAL_INCLUDES += ["/mobile/sailfishos/embedprocess"]
+@@ -267,6 +267,8 @@ LOCAL_INCLUDES += [
+     "/xpcom/build",
+ ]
  
 +CXXFLAGS += CONFIG["SQLITE_CFLAGS"]
 +

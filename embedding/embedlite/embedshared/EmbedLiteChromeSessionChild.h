@@ -39,7 +39,7 @@ class Promise;
 
 namespace embedlite {
 
-class EmbedLiteWindowChild;
+class EmbedLiteHostedWindow;
 class EmbedLiteBrowserDOMWindow;
 class EmbedLiteChromeTabProgressListener;
 class EmbedLiteChromeTabRestoreData;
@@ -55,7 +55,7 @@ public:
   NS_DECL_NSIDOMEVENTLISTENER
   NS_DECL_NSIWEBPROGRESSLISTENER
 
-  explicit EmbedLiteChromeSessionChild(EmbedLiteWindowChild* aWindow);
+  explicit EmbedLiteChromeSessionChild(EmbedLiteHostedWindow* aWindow);
 
   nsresult Start(nsIAppWindow* aAppWindow,
                  const nsACString& aInitialContentURI);
@@ -71,6 +71,10 @@ public:
   bool SendTextEvent(const nsAString& aCommit, const nsAString& aPreEdit,
                      int32_t aReplacementStart,
                      int32_t aReplacementLength);
+  bool SendTextEventAtOffset(const nsAString& aCommit,
+                             const nsAString& aPreEdit,
+                             uint32_t aReplacementOffset,
+                             int32_t aReplacementLength);
   bool SendKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
                     int32_t aCharCode);
   bool SendKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,
@@ -95,6 +99,7 @@ public:
   bool ScrollBy(uint64_t, int32_t, int32_t);
   bool ZoomToRect(uint64_t, float, float, float, float);
   bool SetDesktopMode(uint64_t, bool);
+  bool SetJavascriptEnabled(bool);
   bool SetThrottlePainting(uint64_t, bool);
   bool SuspendTimeouts(uint64_t);
   bool ResumeTimeouts(uint64_t);
@@ -112,7 +117,7 @@ public:
 
 private:
   friend class EmbedLiteBrowserDOMWindow;
-  friend class EmbedLiteWindowChild;
+  friend class EmbedLiteHostedWindow;
 
   struct TabHistoryEntry
   {
@@ -125,6 +130,7 @@ private:
     TabRecord(uint64_t aId, uint64_t aPersistentId);
 
     uint64_t id;
+    uint64_t openerId;
     uint64_t persistentId;
     uint64_t locationRevision;
     uint32_t endpointId;
@@ -136,11 +142,10 @@ private:
     nsTArray<TabHistoryEntry> history;
     uint32_t selectedHistoryIndex;
     bool progressListenerRegistered;
-    bool progressRetryPending;
-    uint8_t progressRetryAttempts;
     bool contentBridgeReady;
     bool loading;
     bool closing;
+    bool crashed;
     bool discarded;
     bool restoring;
     bool awaitingDocumentLocation;
@@ -182,7 +187,6 @@ private:
   nsresult BrowserBecameVisible();
   nsresult InstallBrowserDOMWindow();
   nsresult TryCompleteInitialization();
-  void ScheduleInitializationRetry();
   void ScheduleInitializationCompletion(bool aSuccess);
   void CompleteInitialization(bool aSuccess);
   nsresult CreateTab(nsIOpenWindowInfo* aOpenWindowInfo,
@@ -196,6 +200,11 @@ private:
     const nsAString& aName, bool aInBackground,
     dom::Element** aBrowser = nullptr,
     dom::BrowsingContext** aBrowsingContext = nullptr);
+  nsresult CreatePrintBrowser(
+    nsIOpenWindowInfo* aOpenWindowInfo,
+    dom::Element** aBrowser = nullptr,
+    dom::BrowsingContext** aBrowsingContext = nullptr);
+  void RemovePrintBrowser(dom::Element* aBrowser);
   nsresult MaterializeTab(TabRecord& aTab);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult RestoreTabHistory(TabRecord& aTab);
   nsresult OpenTabFromBrowserDOMWindow(
@@ -208,8 +217,9 @@ private:
                bool aFromExternal, nsIReferrerInfo* aReferrerInfo = nullptr,
                nsIPrincipal* aTriggeringPrincipal = nullptr,
                nsIPolicyContainer* aPolicyContainer = nullptr);
+  bool RecoverCrashedTab(TabRecord& aTab, const nsACString& aURL,
+                         bool aFromExternal);
   nsresult RebindProgressListener(TabRecord& aTab);
-  void ScheduleProgressListenerRetry(uint64_t aTabId);
   void FinishProgressListenerRebind(TabRecord& aTab);
   void RemoveProgressListener(TabRecord& aTab);
   void AddBrowserEventListeners(TabRecord& aTab);
@@ -250,11 +260,12 @@ private:
   void CancelBeforeUnloadPrompts(uint64_t aTabId = 0);
   void RemoveObserver();
 
-  EmbedLiteWindowChild* mWindow; // Not owned.
+  EmbedLiteHostedWindow* mWindow; // Not owned.
   nsIAppWindow* mAppWindow; // Not owned; mWindow owns it.
   nsCOMPtr<nsIBrowserDOMWindow> mBrowserDOMWindow;
   RefPtr<dom::Element> mTabContainer;
   nsTArray<mozilla::UniquePtr<TabRecord>> mTabs;
+  nsTArray<RefPtr<dom::Element>> mPrintBrowsers;
   EmbedLiteChromeContentRegistrations mContentRegistrations;
   nsCString mInitialContentURI;
   uint64_t mNextTabId;
@@ -265,8 +276,6 @@ private:
   uint64_t mNextBeforeUnloadPromptId;
   std::map<uint64_t, PendingBeforeUnloadPrompt> mBeforeUnloadPrompts;
   bool mObservingWindowVisible;
-  bool mInitializationRetryPending;
-  uint8_t mInitializationRetryAttempts;
   bool mInitializationCompletionPending;
   bool mInitializationCompletionSuccess;
   bool mTabSnapshotPending;
@@ -277,6 +286,7 @@ private:
   bool mReady;
   bool mActive;
   bool mFocused;
+  bool mJavascriptEnabled;
 };
 
 } // namespace embedlite

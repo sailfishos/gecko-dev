@@ -32,8 +32,6 @@ public:
   NS_DECL_NSIEMBEDAPPSERVICE
   NS_DECL_NSIEMBEDCHROMEAPPSERVICE
 
-  void RegisterView(uint32_t aId);
-  void UnregisterView(uint32_t aId);
   void HandleAsyncMessage(const char* aMessage, const nsString& aData);
   uint32_t RegisterChromeTab(
     mozilla::dom::BrowsingContext* aBrowsingContext,
@@ -57,8 +55,6 @@ protected:
 
 private:
   friend class EmbedLiteJSON;
-  std::map<uint64_t, uint32_t> mIDMap;
-  std::map<uint64_t, uint32_t> mBrowserIDMap;
   struct ChromeEndpoint {
     mozilla::embedlite::EmbedLiteChromeSessionChild* session;
     uint64_t tabId;

@@ -45,7 +45,7 @@ class TestEmbedLitePuppetWidget final : public EmbedLitePuppetWidget
 {
 public:
   TestEmbedLitePuppetWidget()
-    : EmbedLitePuppetWidget(nullptr)
+    : EmbedLitePuppetWidget()
   {
     mWindowRenderer = new FallbackRenderer;
   }
@@ -216,7 +216,7 @@ TEST(EmbedLiteChromeWindowHostTest, HostedDescendantsInheritResolution)
   ASSERT_EQ(hosted->Create(nullptr, bounds, init), NS_OK);
 
   RefPtr<EmbedLitePuppetWidget> nested =
-    new EmbedLitePuppetWidget(nullptr);
+    new TestEmbedLitePuppetWidget();
   ASSERT_EQ(nested->Create(hosted, bounds, init), NS_OK);
 
   EXPECT_DOUBLE_EQ(hosted->GetDefaultScale().scale, 3.0);

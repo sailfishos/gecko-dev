@@ -6,12 +6,10 @@
 
 
 UNIFIED_SOURCES += [
-    'TestEmbedLiteBrowserInit.cpp',
     'TestEmbedLiteChromeContentSession.cpp',
     'TestEmbedLiteChromeWindowHost.cpp',
     'TestEmbedLiteCoreInit.cpp',
     'TestEmbedLiteMessageSerialization.cpp',
-    'TestEmbedLiteViewInit.cpp',
 ]
 
 LOCAL_INCLUDES = [

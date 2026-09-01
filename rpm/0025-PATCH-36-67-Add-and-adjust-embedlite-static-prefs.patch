@@ -3,7 +3,7 @@ From: David Llewellyn-Jones <david@flypig.co.uk>
 Date: Wed, 5 Aug 2026 11:25:50 +0200
 Subject: [PATCH 36/67] Add and adjust embedlite static prefs
 
-Generate the EmbedLite APZ preference group required by EmbedLiteViewChild.
+Generate the EmbedLite APZ preference group required by hosted remote content.
 
 Restore the external-protocol permission gate with a secure default.
 ---

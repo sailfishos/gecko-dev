@@ -12,6 +12,7 @@
 
 #include "EmbedLiteChromeContentEventOrder.h"
 #include "EmbedLiteCompositorBridgeParent.h"
+#include "EmbedLiteHostedWindow.h"
 #include "EmbedInputData.h"
 #include "EmbedLiteWindow.h"
 #include "EmbedLog.h"
@@ -43,8 +44,9 @@ MOZ_RUNINIT static StaticDataMutex<WindowRegistry> sWindowRegistry(
 } // namespace
 
 EmbedLiteWindowParent::EmbedLiteWindowParent(
-    const uint16_t &width, const uint16_t &height, const uint32_t &id,
-    EmbedLiteWindowListener *aListener, bool aChromeHosted)
+    uint16_t width, uint16_t height, uint32_t id,
+    EmbedLiteWindowListener *aListener,
+    const nsACString& aInitialContentURI, bool aPrivateBrowsing)
   : mId(id)
   , mListener(aListener)
   , mWindow(nullptr)
@@ -52,7 +54,6 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mChromeTabSessionListener(nullptr)
   , mChromeContentSessionListener(nullptr)
   , mChromeInputSessionListener(nullptr)
-  , mChromeHosted(aChromeHosted)
   , mInitialized(false)
   , mDestroying(false)
   , mHasLocation(false)
@@ -75,18 +76,16 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mHasContentState(false)
   , mPlatformFrameListener(nullptr)
   , mCompositor(nullptr)
+  , mHostedWindow(new EmbedLiteHostedWindow(
+      width, height, id, this, aInitialContentURI, aPrivateBrowsing))
   , mGeometry(GeometryState{gfxSize(width, height), mozilla::ROTATION_0},
               "EmbedLiteWindowParent::mGeometry")
 {
   MOZ_ASSERT(mListener);
 
-  if (mChromeHosted) {
-    // Keep APZ input handling on the embedder thread, matching the legacy
-    // EmbedLiteView path. The Gecko main thread receives the transformed
-    // event after APZ has selected its target.
-    layers::APZThreadUtils::SetControllerThread(
-      MessageLoop::current()->SerialEventTarget());
-  }
+  // The Qt application loop is Gecko's main loop and APZ controller target.
+  layers::APZThreadUtils::SetControllerThread(
+    MessageLoop::current()->SerialEventTarget());
 
   MOZ_COUNT_CTOR(EmbedLiteWindowParent);
 }
@@ -94,8 +93,27 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
 EmbedLiteWindowParent::~EmbedLiteWindowParent()
 {
   MOZ_ASSERT(mObservers.IsEmpty());
+  MOZ_ASSERT(!mHostedWindow);
 
   MOZ_COUNT_DTOR(EmbedLiteWindowParent);
+}
+
+void EmbedLiteWindowParent::Initialize()
+{
+  // EmbedLiteHostedWindow posts its widget creation at construction time so
+  // the public window is fully registered before initialization callbacks.
+}
+
+void EmbedLiteWindowParent::Destroy()
+{
+  if (mDestroying) {
+    return;
+  }
+  if (mHostedWindow) {
+    (void) mHostedWindow->Destroy();
+  } else {
+    OnDestroyed();
+  }
 }
 
 void EmbedLiteWindowParent::Register(EmbedLiteWindowParent* aParent)
@@ -154,6 +172,11 @@ RefPtr<EmbedLiteWindowParent> EmbedLiteWindowParent::Current()
 
 void EmbedLiteWindowParent::SetSize(int width, int height)
 {
+  // Update layout before making the corresponding surface geometry visible
+  // to the compositor. Otherwise a compositor tick between the two updates
+  // can publish a correctly sized frame containing stale widget bounds.
+  (void) mHostedWindow->SetSize(gfxSize(width, height));
+
   bool changed = false;
   if (width > 0 && height > 0) {
     auto geometry = mGeometry.Lock();
@@ -163,16 +186,20 @@ void EmbedLiteWindowParent::SetSize(int width, int height)
     }
   }
 
-  (void) SendSetSize(gfxSize(width, height));
   if (changed) {
     ScheduleUpdate();
   }
 }
 
 void
-EmbedLiteWindowParent::SetContentOrientation(const uint32_t &aRotation)
+EmbedLiteWindowParent::SetContentOrientation(uint32_t aRotation)
 {
   MOZ_ASSERT(aRotation < mozilla::ROTATION_COUNT);
+  // Apply the rotated widget bounds before exposing the matching surface
+  // orientation. An interim frame then retains the old shape and is rejected
+  // by the embedder instead of presenting stale layout in the new bounds.
+  (void) mHostedWindow->SetContentOrientation(aRotation);
+
   bool changed = false;
   {
     auto geometry = mGeometry.Lock();
@@ -183,7 +210,6 @@ EmbedLiteWindowParent::SetContentOrientation(const uint32_t &aRotation)
     }
   }
 
-  (void) SendSetContentOrientation(aRotation);
   if (changed) {
     ScheduleUpdate();
   }
@@ -281,7 +307,7 @@ bool EmbedLiteWindowParent::SetPlatformFrameListener(
 
 bool EmbedLiteWindowParent::CanSendChromeSessionCommand() const
 {
-  return mChromeHosted && mInitialized && !mDestroying;
+  return mHostedWindow && mInitialized && !mDestroying;
 }
 
 bool EmbedLiteWindowParent::CanTargetContentTab(uint64_t aTabId) const
@@ -313,7 +339,7 @@ void EmbedLiteWindowParent::SetTabListener(
       !mPendingBeforeUnloadPrompts.empty()) {
     if (CanSendChromeSessionCommand()) {
       for (const auto& prompt : mPendingBeforeUnloadPrompts) {
-        (void) SendResolveBeforeUnloadPrompt(
+        (void) mHostedWindow->ResolveBeforeUnloadPrompt(
           prompt.first, prompt.second, false);
       }
     }
@@ -345,7 +371,7 @@ void EmbedLiteWindowParent::SetContentListener(
 bool EmbedLiteWindowParent::LoadFrameScript(const char* aURI)
 {
   if (!aURI || !*aURI || std::strlen(aURI) > kMaxContentDataLength ||
-      !mChromeHosted || mDestroying) {
+      mDestroying) {
     return false;
   }
   const nsDependentCString uri(aURI);
@@ -356,7 +382,7 @@ bool EmbedLiteWindowParent::LoadFrameScript(const char* aURI)
   if (!mInitialized) {
     return true;
   }
-  if (SendLoadContentFrameScript(uri)) {
+  if (mHostedWindow->LoadContentFrameScript(uri)) {
     return true;
   }
   MOZ_ALWAYS_TRUE(mContentRegistrations.RemoveFrameScript(uri));
@@ -366,7 +392,7 @@ bool EmbedLiteWindowParent::LoadFrameScript(const char* aURI)
 bool EmbedLiteWindowParent::AddMessageListener(const char* aName)
 {
   if (!aName || !*aName || std::strlen(aName) > kMaxContentNameLength ||
-      !mChromeHosted || mDestroying) {
+      mDestroying) {
     return false;
   }
   const nsDependentCString name(aName);
@@ -377,7 +403,7 @@ bool EmbedLiteWindowParent::AddMessageListener(const char* aName)
   if (!mInitialized) {
     return true;
   }
-  if (SendAddContentMessageListener(name)) {
+  if (mHostedWindow->AddContentMessageListener(name)) {
     return true;
   }
   MOZ_ALWAYS_TRUE(mContentRegistrations.RemoveMessageListener(name));
@@ -387,14 +413,14 @@ bool EmbedLiteWindowParent::AddMessageListener(const char* aName)
 bool EmbedLiteWindowParent::RemoveMessageListener(const char* aName)
 {
   if (!aName || !*aName || std::strlen(aName) > kMaxContentNameLength ||
-      !mChromeHosted || mDestroying) {
+      mDestroying) {
     return false;
   }
   const nsDependentCString name(aName);
   if (!mContentRegistrations.HasMessageListener(name)) {
     return true;
   }
-  if (mInitialized && !SendRemoveContentMessageListener(name)) {
+  if (mInitialized && !mHostedWindow->RemoveContentMessageListener(name)) {
     return false;
   }
   MOZ_ALWAYS_TRUE(mContentRegistrations.RemoveMessageListener(name));
@@ -407,7 +433,7 @@ bool EmbedLiteWindowParent::SendAsyncMessage(
   return aTabId && aName && *aName && aJSON &&
     NS_strlen(aName) <= kMaxContentNameLength &&
     NS_strlen(aJSON) <= kMaxContentDataLength &&
-    CanTargetContentTab(aTabId) && SendSendContentAsyncMessage(
+    CanTargetContentTab(aTabId) && mHostedWindow->SendContentAsyncMessage(
       aTabId, nsDependentString(aName), nsDependentString(aJSON));
 }
 
@@ -420,7 +446,7 @@ bool EmbedLiteWindowParent::SendMouseEvent(
     aButton <= 4 && aButtons <= 0x1f && aClickCount <= 3 &&
     mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendSendContentMouseEvent(aTabId, static_cast<uint8_t>(aType), aX, aY,
+    mHostedWindow->SendContentMouseEvent(aTabId, static_cast<uint8_t>(aType), aX, aY,
                               aTime, aButton, aButtons, aModifiers,
                               aClickCount);
 }
@@ -433,68 +459,73 @@ bool EmbedLiteWindowParent::SendWheelEvent(
   return aTabId && std::isfinite(aDeltaX) && std::isfinite(aDeltaY) &&
     aDeltaMode <= 2 && mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendSendContentWheelEvent(aTabId, aX, aY, aTime, aDeltaX, aDeltaY,
+    mHostedWindow->SendContentWheelEvent(aTabId, aX, aY, aTime, aDeltaX, aDeltaY,
                               aDeltaMode, aModifiers);
 }
 
 bool EmbedLiteWindowParent::ScrollTo(uint64_t aTabId, int32_t aX, int32_t aY)
 { return CanTargetContentTab(aTabId) &&
-    SendContentScrollTo(aTabId, aX, aY); }
+    mHostedWindow->ContentScrollTo(aTabId, aX, aY); }
 bool EmbedLiteWindowParent::ScrollBy(uint64_t aTabId, int32_t aX, int32_t aY)
 { return CanTargetContentTab(aTabId) &&
-    SendContentScrollBy(aTabId, aX, aY); }
+    mHostedWindow->ContentScrollBy(aTabId, aX, aY); }
 bool EmbedLiteWindowParent::ZoomToRect(uint64_t aTabId, float aX, float aY,
                                       float aWidth, float aHeight)
 { return aTabId && std::isfinite(aX) && std::isfinite(aY) &&
     std::isfinite(aWidth) && aWidth >= 0 && std::isfinite(aHeight) &&
     aHeight >= 0 && mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendContentZoomToRect(aTabId, aX, aY, aWidth, aHeight); }
+    mHostedWindow->ContentZoomToRect(aTabId, aX, aY, aWidth, aHeight); }
 bool EmbedLiteWindowParent::SetDesktopMode(uint64_t aTabId, bool aValue)
 { return mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendSetContentDesktopMode(aTabId, aValue); }
+    mHostedWindow->SetContentDesktopMode(aTabId, aValue); }
+bool EmbedLiteWindowParent::SetJavascriptEnabled(bool aEnabled)
+{
+  return mHostedWindow &&
+    mHostedWindow->SetContentJavascriptEnabled(aEnabled);
+}
 bool EmbedLiteWindowParent::SetThrottlePainting(uint64_t aTabId, bool aValue)
 {
   return CanTargetContentTab(aTabId) &&
-    SendSetContentThrottlePainting(aTabId, aValue);
+    mHostedWindow->SetContentThrottlePainting(aTabId, aValue);
 }
 bool EmbedLiteWindowParent::SuspendTimeouts(uint64_t aTabId)
 { return CanTargetContentTab(aTabId) &&
-    SendSuspendContentTimeouts(aTabId); }
+    mHostedWindow->SuspendContentTimeouts(aTabId); }
 bool EmbedLiteWindowParent::ResumeTimeouts(uint64_t aTabId)
 { return CanTargetContentTab(aTabId) &&
-    SendResumeContentTimeouts(aTabId); }
+    mHostedWindow->ResumeContentTimeouts(aTabId); }
 bool EmbedLiteWindowParent::SetHttpUserAgent(uint64_t aTabId,
                                              const char16_t* aUserAgent)
 {
   return aTabId && aUserAgent &&
     NS_strlen(aUserAgent) <= kMaxContentNameLength &&
-    CanTargetContentTab(aTabId) && SendSetContentHttpUserAgent(
+    CanTargetContentTab(aTabId) && mHostedWindow->SetContentHttpUserAgent(
       aTabId, nsDependentString(aUserAgent));
 }
 bool EmbedLiteWindowParent::SetMargins(uint64_t aTabId, int32_t aTop,
     int32_t aRight, int32_t aBottom, int32_t aLeft)
 { return mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendSetContentMargins(aTabId, aTop, aRight, aBottom, aLeft); }
+    mHostedWindow->SetContentMargins(aTabId, aTop, aRight, aBottom, aLeft); }
 bool EmbedLiteWindowParent::SetSafeAreaInsets(uint64_t aTabId, int32_t aTop,
     int32_t aRight, int32_t aBottom, int32_t aLeft)
 { return mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendSetContentSafeAreaInsets(aTabId, aTop, aRight, aBottom, aLeft); }
+    mHostedWindow->SetContentSafeAreaInsets(aTabId, aTop, aRight, aBottom, aLeft); }
 bool EmbedLiteWindowParent::SetDynamicToolbarHeight(uint64_t aTabId,
                                                      int32_t aHeight)
 {
   return aHeight >= 0 && mTabSnapshot.selectedTabId() == aTabId &&
     CanTargetContentTab(aTabId) &&
-    SendSetContentDynamicToolbarHeight(aTabId, aHeight);
+    mHostedWindow->SetContentDynamicToolbarHeight(aTabId, aHeight);
 }
 bool EmbedLiteWindowParent::SetScreenProperties(int32_t aDepth,
                                                 float aDensity, float aDpi)
 { return aDepth > 0 && std::isfinite(aDensity) && aDensity > 0 &&
     std::isfinite(aDpi) && aDpi > 0 && CanSendChromeSessionCommand() &&
-    SendSetContentScreenProperties(aDepth, aDensity, aDpi); }
+    mHostedWindow->SetContentScreenProperties(aDepth, aDensity, aDpi); }
 
 void EmbedLiteWindowParent::SetInputListener(
     EmbedLiteChromeInputSessionListener* aListener)
@@ -508,41 +539,41 @@ void EmbedLiteWindowParent::SetInputListener(
 bool EmbedLiteWindowParent::LoadURL(const char* aURL, bool aFromExternal)
 {
   return aURL && CanSendChromeSessionCommand() &&
-    SendLoadURL(nsDependentCString(aURL), aFromExternal);
+    mHostedWindow->LoadURL(nsDependentCString(aURL), aFromExternal);
 }
 
 bool EmbedLiteWindowParent::GoBack(bool aRequireUserInteraction,
                                    bool aUserActivation)
 {
   return CanSendChromeSessionCommand() &&
-    SendGoBack(aRequireUserInteraction, aUserActivation);
+    mHostedWindow->GoBack(aRequireUserInteraction, aUserActivation);
 }
 
 bool EmbedLiteWindowParent::GoForward(bool aRequireUserInteraction,
                                       bool aUserActivation)
 {
   return CanSendChromeSessionCommand() &&
-    SendGoForward(aRequireUserInteraction, aUserActivation);
+    mHostedWindow->GoForward(aRequireUserInteraction, aUserActivation);
 }
 
 bool EmbedLiteWindowParent::StopLoad()
 {
-  return CanSendChromeSessionCommand() && SendStopLoad();
+  return CanSendChromeSessionCommand() && mHostedWindow->StopLoad();
 }
 
 bool EmbedLiteWindowParent::Reload(bool aHardReload)
 {
-  return CanSendChromeSessionCommand() && SendReload(aHardReload);
+  return CanSendChromeSessionCommand() && mHostedWindow->Reload(aHardReload);
 }
 
 bool EmbedLiteWindowParent::SetActive(bool aActive)
 {
-  return CanSendChromeSessionCommand() && SendSetActive(aActive);
+  return CanSendChromeSessionCommand() && mHostedWindow->SetActive(aActive);
 }
 
 bool EmbedLiteWindowParent::SetFocused(bool aFocused)
 {
-  return CanSendChromeSessionCommand() && SendSetFocused(aFocused);
+  return CanSendChromeSessionCommand() && mHostedWindow->SetFocused(aFocused);
 }
 
 bool EmbedLiteWindowParent::ReceiveInputEvent(const EmbedTouchInput& aEvent)
@@ -564,7 +595,7 @@ bool EmbedLiteWindowParent::ReceiveInputEvent(const EmbedTouchInput& aEvent)
       ScreenSize(1, 1), 180.0f, touchData.pressure));
   }
 
-  return SendReceiveInputEvent(input);
+  return mHostedWindow->ReceiveInputEvent(input);
 }
 
 bool EmbedLiteWindowParent::SendTextEvent(
@@ -573,9 +604,20 @@ bool EmbedLiteWindowParent::SendTextEvent(
 {
   return aCommit && aPreEdit && aReplacementLength >= 0 &&
     CanSendChromeSessionCommand() &&
-    SendHandleTextEvent(nsDependentCString(aCommit),
+    mHostedWindow->HandleTextEvent(nsDependentCString(aCommit),
                         nsDependentCString(aPreEdit),
                         aReplacementStart, aReplacementLength);
+}
+
+bool EmbedLiteWindowParent::SendTextEventAtOffset(
+    const char* aCommit, const char* aPreEdit,
+    uint32_t aReplacementOffset, int32_t aReplacementLength)
+{
+  return aCommit && aPreEdit && aReplacementLength >= 0 &&
+    CanSendChromeSessionCommand() &&
+    mHostedWindow->HandleTextEventAtOffset(
+      nsDependentCString(aCommit), nsDependentCString(aPreEdit),
+      aReplacementOffset, aReplacementLength);
 }
 
 bool EmbedLiteWindowParent::SendKeyPress(
@@ -583,7 +625,7 @@ bool EmbedLiteWindowParent::SendKeyPress(
 {
   return aDomKeyCode >= 0 && aCharCode >= 0 && aCharCode <= UINT16_MAX &&
     CanSendChromeSessionCommand() &&
-    SendHandleKeyPressEvent(aDomKeyCode, aModifiers, aCharCode);
+    mHostedWindow->HandleKeyPressEvent(aDomKeyCode, aModifiers, aCharCode);
 }
 
 bool EmbedLiteWindowParent::SendKeyRelease(
@@ -591,14 +633,14 @@ bool EmbedLiteWindowParent::SendKeyRelease(
 {
   return aDomKeyCode >= 0 && aCharCode >= 0 && aCharCode <= UINT16_MAX &&
     CanSendChromeSessionCommand() &&
-    SendHandleKeyReleaseEvent(aDomKeyCode, aModifiers, aCharCode);
+    mHostedWindow->HandleKeyReleaseEvent(aDomKeyCode, aModifiers, aCharCode);
 }
 
 bool EmbedLiteWindowParent::RestoreTabs(
     const EmbedLiteChromeRestoredTab* aTabs, uint32_t aTabCount,
     int32_t aSelectedTabIndex)
 {
-  if (!mChromeHosted || mDestroying || mRestoreTabsSent ||
+  if (mDestroying || mRestoreTabsSent ||
       (!aTabCount && aSelectedTabIndex != -1) ||
       (aTabCount &&
        (!aTabs || aSelectedTabIndex < 0 ||
@@ -644,7 +686,7 @@ bool EmbedLiteWindowParent::RestoreTabs(
     tabs.AppendElement(std::move(data));
   }
 
-  if (!SendRestoreTabs(tabs, aSelectedTabIndex)) {
+  if (!mHostedWindow->RestoreTabs(tabs, aSelectedTabIndex)) {
     return false;
   }
   mRestoreTabsSent = true;
@@ -658,7 +700,7 @@ bool EmbedLiteWindowParent::NewTab(const char* aURL,
 {
   return aURL && aURL[0] && aPersistentId &&
     CanSendChromeSessionCommand() &&
-    SendNewTab(nsDependentCString(aURL), aPersistentId, aFromExternal,
+    mHostedWindow->NewTab(nsDependentCString(aURL), aPersistentId, aFromExternal,
                aInBackground);
 }
 
@@ -666,21 +708,28 @@ bool EmbedLiteWindowParent::AssociateTab(uint64_t aTabId,
                                          uint64_t aPersistentId)
 {
   return aTabId && aPersistentId && CanSendChromeSessionCommand() &&
-    SendAssociateTab(aTabId, aPersistentId);
+    mHostedWindow->AssociateTab(aTabId, aPersistentId);
 }
 
 bool EmbedLiteWindowParent::SelectTab(uint64_t aTabId)
 {
-  return aTabId && CanSendChromeSessionCommand() && SendSelectTab(aTabId);
+  return aTabId && CanSendChromeSessionCommand() && mHostedWindow->SelectTab(aTabId);
 }
 
 bool EmbedLiteWindowParent::CloseTab(uint64_t aTabId)
 {
   if (!aTabId || !CanSendChromeSessionCommand() ||
-      mPendingTabCloses.count(aTabId) || !SendCloseTab(aTabId)) {
+      mPendingTabCloses.count(aTabId)) {
     return false;
   }
+
+  // Hosted callbacks are direct and can complete before CloseTab returns.
+  RefPtr<EmbedLiteWindowParent> deathGrip(this);
   mPendingTabCloses.insert(aTabId);
+  if (!mHostedWindow->CloseTab(aTabId)) {
+    mPendingTabCloses.erase(aTabId);
+    return false;
+  }
   return true;
 }
 
@@ -694,7 +743,7 @@ bool EmbedLiteWindowParent::ResolveBeforeUnloadPrompt(
     return false;
   }
 
-  if (!SendResolveBeforeUnloadPrompt(aRequestId, aTabId, aPermit)) {
+  if (!mHostedWindow->ResolveBeforeUnloadPrompt(aRequestId, aTabId, aPermit)) {
     return false;
   }
   mPendingBeforeUnloadPrompts.erase(prompt);
@@ -742,7 +791,7 @@ void EmbedLiteWindowParent::ReplayTabSnapshot()
   tabs.SetCapacity(mTabSnapshot.tabs().Length());
   for (const EmbedLiteChromeTabData& tab : mTabSnapshot.tabs()) {
     tabs.AppendElement(EmbedLiteChromeTabSnapshot{
-      tab.id(), tab.persistentId(), tab.locationRevision(),
+      tab.id(), tab.openerId(), tab.persistentId(), tab.locationRevision(),
       tab.location().get(), tab.title().get(), tab.loading(), tab.closing(),
       tab.discarded(), tab.canGoBack(), tab.canGoForward(), tab.progress(),
       tab.current(), tab.total()});
@@ -839,110 +888,95 @@ void EmbedLiteWindowParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
   mWindow = window;
 }
 
-void EmbedLiteWindowParent::ActorDestroy(ActorDestroyReason aWhy)
+void EmbedLiteWindowParent::NotifySessionsDestroyed()
 {
-  LOGT("reason:%i", aWhy);
+  mPendingBeforeUnloadPrompts.clear();
+  mPendingTabCloses.clear();
+  if (mChromeSessionListener) {
+    mChromeSessionListener->ChromeSessionDestroyed();
+    mChromeSessionListener = nullptr;
+  }
+  if (mChromeTabSessionListener) {
+    mChromeTabSessionListener->ChromeTabSessionDestroyed();
+    mChromeTabSessionListener = nullptr;
+  }
+  if (mChromeContentSessionListener) {
+    mChromeContentSessionListener->ChromeContentSessionDestroyed();
+    mChromeContentSessionListener = nullptr;
+  }
+  if (mChromeInputSessionListener) {
+    mChromeInputSessionListener->ChromeInputSessionDestroyed();
+    mChromeInputSessionListener = nullptr;
+  }
+  mHasInputContext = false;
+  mInputType.Truncate();
+  mInputMode.Truncate();
+  mActionHint.Truncate();
+}
+
+void EmbedLiteWindowParent::OnInitialized(bool aSuccess)
+{
+  MOZ_ASSERT(mWindow);
+  if (aSuccess) {
+    mInitialized = true;
+    for (const nsCString& script : mContentRegistrations.FrameScripts()) {
+      if (!mHostedWindow->LoadContentFrameScript(script)) {
+        aSuccess = false;
+        break;
+      }
+    }
+    if (aSuccess) {
+      for (const nsCString& name :
+           mContentRegistrations.MessageListeners()) {
+        if (!mHostedWindow->AddContentMessageListener(name)) {
+          aSuccess = false;
+          break;
+        }
+      }
+    }
+    if (aSuccess) {
+      ReplayChromeInputContext();
+      mListener->WindowInitialized();
+      return;
+    }
+    mInitialized = false;
+  }
+
+  if (EmbedLiteChromeWindowListener* chromeListener =
+               dynamic_cast<EmbedLiteChromeWindowListener*>(mListener)) {
+    chromeListener->ChromeWindowInitializationFailed();
+  }
+  if (mHostedWindow) {
+    (void) mHostedWindow->Destroy();
+  }
+}
+
+void EmbedLiteWindowParent::OnDestroyed()
+{
+  MOZ_ASSERT(mWindow);
   if (mDestroying) {
     return;
   }
 
+  RefPtr<EmbedLiteWindowParent> deathGrip(this);
   mDestroying = true;
-  mPendingBeforeUnloadPrompts.clear();
-  mPendingTabCloses.clear();
-  if (mChromeSessionListener) {
-    mChromeSessionListener->ChromeSessionDestroyed();
-    mChromeSessionListener = nullptr;
-  }
-  if (mChromeTabSessionListener) {
-    mChromeTabSessionListener->ChromeTabSessionDestroyed();
-    mChromeTabSessionListener = nullptr;
-  }
-  if (mChromeContentSessionListener) {
-    mChromeContentSessionListener->ChromeContentSessionDestroyed();
-    mChromeContentSessionListener = nullptr;
-  }
-  if (mChromeInputSessionListener) {
-    mChromeInputSessionListener->ChromeInputSessionDestroyed();
-    mChromeInputSessionListener = nullptr;
-  }
-  mHasInputContext = false;
-  mInputType.Truncate();
-  mInputMode.Truncate();
-  mActionHint.Truncate();
-  if (mWindow) {
-    mWindow->Destroyed();
+  mHostedWindow = nullptr;
+  NotifySessionsDestroyed();
+  EmbedLiteWindow* window = mWindow;
+  Unregister(this);
+  if (window) {
+    window->Destroyed();
   }
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvInitialized(const bool &success)
-{
-  MOZ_ASSERT(mWindow);
-  if (success) {
-    mInitialized = true;
-    for (const nsCString& script : mContentRegistrations.FrameScripts()) {
-      if (!SendLoadContentFrameScript(script)) {
-        return IPC_FAIL(this, "Failed to replay chrome content frame script");
-      }
-    }
-    for (const nsCString& name :
-         mContentRegistrations.MessageListeners()) {
-      if (!SendAddContentMessageListener(name)) {
-        return IPC_FAIL(this, "Failed to replay chrome content listener");
-      }
-    }
-    ReplayChromeInputContext();
-    mListener->WindowInitialized();
-  } else if (EmbedLiteChromeWindowListener* chromeListener =
-               dynamic_cast<EmbedLiteChromeWindowListener*>(mListener)) {
-    chromeListener->ChromeWindowInitializationFailed();
-  }
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
-{
-  MOZ_ASSERT(mWindow);
-  if (mDestroying) {
-    return IPC_OK();
-  }
-
-  mDestroying = true;
-  mPendingBeforeUnloadPrompts.clear();
-  mPendingTabCloses.clear();
-  if (mChromeSessionListener) {
-    mChromeSessionListener->ChromeSessionDestroyed();
-    mChromeSessionListener = nullptr;
-  }
-  if (mChromeTabSessionListener) {
-    mChromeTabSessionListener->ChromeTabSessionDestroyed();
-    mChromeTabSessionListener = nullptr;
-  }
-  if (mChromeContentSessionListener) {
-    mChromeContentSessionListener->ChromeContentSessionDestroyed();
-    mChromeContentSessionListener = nullptr;
-  }
-  if (mChromeInputSessionListener) {
-    mChromeInputSessionListener->ChromeInputSessionDestroyed();
-    mChromeInputSessionListener = nullptr;
-  }
-  mHasInputContext = false;
-  mInputType.Truncate();
-  mInputMode.Truncate();
-  mActionHint.Truncate();
-  mWindow->Destroyed();
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnLocationChanged(const nsCString& aLocation,
-                                             const bool& aCanGoBack,
-                                             const bool& aCanGoForward)
+bool EmbedLiteWindowParent::OnLocationChanged(const nsCString& aLocation,
+                                             bool aCanGoBack,
+                                             bool aCanGoForward)
 {
   if (!CanSendChromeSessionCommand() ||
       (mHasLocation && mLocation == aLocation &&
        mCanGoBack == aCanGoBack && mCanGoForward == aCanGoForward)) {
-    return IPC_OK();
+    return true;
   }
 
   mHasLocation = true;
@@ -953,15 +987,14 @@ EmbedLiteWindowParent::RecvOnLocationChanged(const nsCString& aLocation,
     mChromeSessionListener->OnLocationChanged(
       mLocation.get(), mCanGoBack, mCanGoForward);
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnLoadStarted(const nsCString& aLocation)
+bool EmbedLiteWindowParent::OnLoadStarted(const nsCString& aLocation)
 {
   if (!CanSendChromeSessionCommand() ||
       (mHasLoadStarted && mLoadStartedLocation == aLocation)) {
-    return IPC_OK();
+    return true;
   }
 
   mHasLoadStarted = true;
@@ -970,31 +1003,30 @@ EmbedLiteWindowParent::RecvOnLoadStarted(const nsCString& aLocation)
   if (mChromeSessionListener) {
     mChromeSessionListener->OnLoadStarted(mLoadStartedLocation.get());
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvOnLoadFinished()
+bool EmbedLiteWindowParent::OnLoadFinished()
 {
   if (!CanSendChromeSessionCommand() || !mHasLoadStarted) {
-    return IPC_OK();
+    return true;
   }
 
   mHasLoadStarted = false;
   if (mChromeSessionListener) {
     mChromeSessionListener->OnLoadFinished();
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnLoadProgress(const int32_t& aProgress,
-                                          const int64_t& aCurrent,
-                                          const int64_t& aTotal)
+bool EmbedLiteWindowParent::OnLoadProgress(int32_t aProgress,
+                                          int64_t aCurrent,
+                                          int64_t aTotal)
 {
   if (!CanSendChromeSessionCommand() ||
       (mHasLoadProgress && mLoadProgress == aProgress &&
        mLoadCurrent == aCurrent && mLoadTotal == aTotal)) {
-    return IPC_OK();
+    return true;
   }
 
   mHasLoadProgress = true;
@@ -1005,14 +1037,13 @@ EmbedLiteWindowParent::RecvOnLoadProgress(const int32_t& aProgress,
     mChromeSessionListener->OnLoadProgress(mLoadProgress, mLoadCurrent,
                                            mLoadTotal);
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnTitleChanged(const nsString& aTitle)
+bool EmbedLiteWindowParent::OnTitleChanged(const nsString& aTitle)
 {
   if (!CanSendChromeSessionCommand() || (mHasTitle && mTitle == aTitle)) {
-    return IPC_OK();
+    return true;
   }
 
   mHasTitle = true;
@@ -1020,49 +1051,63 @@ EmbedLiteWindowParent::RecvOnTitleChanged(const nsString& aTitle)
   if (mChromeSessionListener) {
     mChromeSessionListener->OnTitleChanged(mTitle.get());
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnTabSnapshot(
+bool EmbedLiteWindowParent::OnTabSnapshot(
     const EmbedLiteChromeSessionData& aSnapshot)
 {
   if (!CanSendChromeSessionCommand()) {
-    return IPC_OK();
+    return true;
   }
   if (!aSnapshot.revision()) {
-    return IPC_FAIL(this, "Invalid chrome tab snapshot revision");
+    return false;
   }
   if (mHasTabSnapshot &&
       aSnapshot.revision() <= mTabSnapshot.revision()) {
-    return IPC_OK();
+    return true;
   }
 
   bool selectedFound = false;
   for (uint32_t index = 0; index < aSnapshot.tabs().Length(); ++index) {
     const EmbedLiteChromeTabData& tab = aSnapshot.tabs()[index];
     if (!tab.id()) {
-      return IPC_FAIL(this, "Invalid zero chrome tab id");
+      return false;
+    }
+    if (tab.openerId() == tab.id()) {
+      return false;
+    }
+    if (tab.openerId()) {
+      bool openerFound = false;
+      for (const EmbedLiteChromeTabData& candidate : aSnapshot.tabs()) {
+        if (candidate.id() == tab.openerId()) {
+          openerFound = true;
+          break;
+        }
+      }
+      if (!openerFound) {
+        return false;
+      }
     }
     if (tab.discarded() && tab.loading()) {
-      return IPC_FAIL(this, "Discarded chrome tab cannot be loading");
+      return false;
     }
     if (tab.id() == aSnapshot.selectedTabId()) {
       selectedFound = true;
     }
     for (uint32_t other = 0; other < index; ++other) {
       if (aSnapshot.tabs()[other].id() == tab.id()) {
-        return IPC_FAIL(this, "Duplicate chrome tab id");
+        return false;
       }
       if (tab.persistentId() &&
           aSnapshot.tabs()[other].persistentId() == tab.persistentId()) {
-        return IPC_FAIL(this, "Duplicate persistent chrome tab id");
+        return false;
       }
     }
   }
   if ((aSnapshot.tabs().IsEmpty() && aSnapshot.selectedTabId()) ||
       (!aSnapshot.tabs().IsEmpty() && !selectedFound)) {
-    return IPC_FAIL(this, "Invalid selected chrome tab id");
+    return false;
   }
 
   mHasTabSnapshot = true;
@@ -1084,25 +1129,24 @@ EmbedLiteWindowParent::RecvOnTabSnapshot(
   }
   ReplayTabSnapshot();
   UpdateSelectedChromeSessionState();
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnBeforeUnloadPrompt(
+bool EmbedLiteWindowParent::OnBeforeUnloadPrompt(
     const EmbedLiteChromeBeforeUnloadData& aPrompt)
 {
   if (!CanSendChromeSessionCommand()) {
-    return IPC_OK();
+    return true;
   }
   if (!aPrompt.requestId() || !aPrompt.tabId() ||
       mPendingBeforeUnloadPrompts.count(aPrompt.requestId())) {
-    return IPC_FAIL(this, "Invalid chrome beforeunload prompt");
+    return false;
   }
 
   if (!mChromeTabSessionListener) {
-    (void) SendResolveBeforeUnloadPrompt(
+    (void) mHostedWindow->ResolveBeforeUnloadPrompt(
       aPrompt.requestId(), aPrompt.tabId(), false);
-    return IPC_OK();
+    return true;
   }
 
   mPendingBeforeUnloadPrompts.emplace(
@@ -1113,36 +1157,34 @@ EmbedLiteWindowParent::RecvOnBeforeUnloadPrompt(
     aPrompt.leaveLabel().get(), aPrompt.stayLabel().get()
   };
   mChromeTabSessionListener->OnBeforeUnloadPrompt(prompt);
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnTabCloseResult(
-    const uint64_t& aTabId, const bool& aClosed)
+bool EmbedLiteWindowParent::OnTabCloseResult(
+    uint64_t aTabId, bool aClosed)
 {
   if (mDestroying) {
-    return IPC_OK();
+    return true;
   }
   if (!aTabId) {
-    return IPC_FAIL(this, "Invalid zero chrome tab close result id");
+    return false;
   }
   const auto pending = mPendingTabCloses.find(aTabId);
   if (pending == mPendingTabCloses.end()) {
-    return IPC_FAIL(this, "Unsolicited chrome tab close result");
+    return false;
   }
   mPendingTabCloses.erase(pending);
   if (mChromeContentSessionListener) {
     mChromeContentSessionListener->OnTabCloseResult(aTabId, aClosed);
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnContentStateChanged(
+bool EmbedLiteWindowParent::OnContentStateChanged(
     const EmbedLiteChromeContentStateData& aState)
 {
   if (!CanSendChromeSessionCommand()) {
-    return IPC_OK();
+    return true;
   }
   const EmbedLiteChromeTabData* selected = nullptr;
   if (mHasTabSnapshot) {
@@ -1159,14 +1201,14 @@ EmbedLiteWindowParent::RecvOnContentStateChanged(
       aState.viewportWidth() < 0 ||
       !std::isfinite(aState.viewportHeight()) ||
       aState.viewportHeight() < 0) {
-    return IPC_FAIL(this, "Malformed chrome content state");
+    return false;
   }
   if (!selected || aState.tabId() != selected->id() ||
       aState.persistentId() != selected->persistentId() ||
       aState.locationRevision() != selected->locationRevision() ||
       aState.securityStatus().Length() > kMaxContentDataLength ||
       aState.revision() <= mContentState.revision()) {
-    return IPC_OK();
+    return true;
   }
   mContentState = aState;
   mHasContentState = true;
@@ -1182,14 +1224,13 @@ EmbedLiteWindowParent::RecvOnContentStateChanged(
         aState.viewportY(), aState.viewportWidth(),
         aState.viewportHeight()});
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnContentAsyncMessage(
-    const uint64_t& aTabId, const uint64_t& aPersistentId,
-    const uint64_t& aLocationRevision,
-    const nsString& aName, const nsString& aJSON)
+bool EmbedLiteWindowParent::OnContentAsyncMessage(
+    uint64_t aTabId, uint64_t aPersistentId,
+    uint64_t aLocationRevision,
+    const nsAString& aName, const nsAString& aJSON)
 {
   bool validTab = false;
   if (mHasTabSnapshot) {
@@ -1205,19 +1246,20 @@ EmbedLiteWindowParent::RecvOnContentAsyncMessage(
   if (!validTab ||
       !IsChromeContentNotificationBounded(
         aName.Length(), aJSON.Length())) {
-    return IPC_OK();
+    return true;
   }
   if (mChromeContentSessionListener) {
+    const nsString name(aName);
+    const nsString json(aJSON);
     mChromeContentSessionListener->RecvAsyncMessage(
       aTabId, aPersistentId, aLocationRevision,
-      aName.get(), aJSON.get());
+      name.get(), json.get());
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnContentWindowCloseRequested(
-    const uint64_t& aTabId, const uint64_t& aPersistentId)
+bool EmbedLiteWindowParent::OnContentWindowCloseRequested(
+    uint64_t aTabId, uint64_t aPersistentId)
 {
   bool validTab = false;
   if (mHasTabSnapshot) {
@@ -1229,24 +1271,23 @@ EmbedLiteWindowParent::RecvOnContentWindowCloseRequested(
     }
   }
   if (!validTab) {
-    return IPC_OK();
+    return true;
   }
   if (mChromeContentSessionListener) {
     mChromeContentSessionListener->OnWindowCloseRequested(
       aTabId, aPersistentId);
   }
-  return IPC_OK();
+  return true;
 }
 
-mozilla::ipc::IPCResult
-EmbedLiteWindowParent::RecvOnInputContextChanged(
-    const int32_t& aEnabled, const int32_t& aOpen,
-    const nsString& aInputType, const nsString& aInputMode,
-    const nsString& aActionHint, const int32_t& aCause,
-    const int32_t& aFocusChange)
+void EmbedLiteWindowParent::OnInputContextChanged(
+    int32_t aEnabled, int32_t aOpen,
+    const nsAString& aInputType, const nsAString& aInputMode,
+    const nsAString& aActionHint, int32_t aCause,
+    int32_t aFocusChange)
 {
-  if (!mChromeHosted || mDestroying) {
-    return IPC_OK();
+  if (mDestroying) {
+    return;
   }
 
   mHasInputContext = true;
@@ -1260,7 +1301,6 @@ EmbedLiteWindowParent::RecvOnInputContextChanged(
   if (CanSendChromeSessionCommand()) {
     ReplayChromeInputContext();
   }
-  return IPC_OK();
 }
 
 void EmbedLiteWindowParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)

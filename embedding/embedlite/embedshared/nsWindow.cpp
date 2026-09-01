@@ -10,12 +10,10 @@
 #include <stdint.h>
 
 #include "nsWindow.h"
-#include "EmbedLiteWindowChild.h"
+#include "EmbedLiteHostedWindow.h"
 #include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteApp.h"
-
-#include "EmbedContentController.h"
 
 #include "base/basictypes.h"
 
@@ -32,6 +30,7 @@
 #include "mozilla/layers/APZEventState.h"
 #include "mozilla/layers/ChromeProcessController.h"
 #include "mozilla/layers/ImageBridgeChild.h"
+#include "mozilla/layers/IAPZCTreeManager.h"
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/CompositorSession.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
@@ -41,15 +40,6 @@
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 //using namespace mozilla::ipc;
-
-#ifdef MOZ_LOGGING
-#define LOG_CONTROLLER_STACK  \
-  if (MOZ_UNLIKELY(detail::log_test(GetEmbedCommonLog("EmbedLiteTrace"), LogLevel::Debug))) { \
-    LogControllerStack(mControllers); \
-  }
-#else // MOZ_LOGGING
-#define LOG_CONTROLLER_STACK  do {} while (0)
-#endif // MOZ_LOGGING
 
 namespace mozilla {
 namespace embedlite {
@@ -244,7 +234,7 @@ AutoEmbedLiteChromeWindowHost::Consume()
   return widget.forget();
 }
 
-nsWindow::nsWindow(EmbedLiteWindowChild *window)
+nsWindow::nsWindow(EmbedLiteHostedWindow *window)
   : PuppetWidgetBase()
   , mFirstViewCreated(false)
   , mChromeInputReady(false)
@@ -477,67 +467,6 @@ layers::LayersId nsWindow::GetRootLayerId() const
   return mCompositorSession ? mCompositorSession->RootLayerTreeId() : layers::LayersId{0};
 }
 
-#ifdef MOZ_LOGGING
-static void LogControllerStack(std::list<EmbedContentController *> &controllers)
-{
-  int pos = 0;
-  for (std::list<EmbedContentController *>::const_iterator it = controllers.begin(); it != controllers.end(); ++it) {
-    LOGT("Stack controller %d : %u", pos, (*it)->GetUniqueID());
-    ++pos;
-  }
-}
-#endif // MOZ_LOGGING
-
-inline static bool ControllersEqual(const EmbedContentController *aController1, const EmbedContentController *aController2)
-{
-  // Compare unique ids, but fallback to pointer comparison if id is zero
-  return (aController1->GetUniqueID() != 0 && (aController1->GetUniqueID() == aController2->GetUniqueID()))
-      || (aController1 == aController2);
-}
-
-void nsWindow::Activate(EmbedContentController *aController)
-{
-  if (mCompositorSession) {
-    mCompositorSession->SetContentController(aController);
-  }
-
-  MOZ_ASSERT(aController);
-
-  // If the view is deactivated we need to reactivate the previous view's
-  // content controller, so we store the controllwers on a stack
-  if (mControllers.empty() || !ControllersEqual(aController, mControllers.back())) {
-    LOGT("Pushing content controller %u", aController->GetUniqueID());
-    mControllers.push_back(aController);
-    LOG_CONTROLLER_STACK;
-  }
-}
-
-void nsWindow::Deactivate(EmbedContentController *aController)
-{
-  if (!aController || mControllers.empty()) {
-    return;
-  }
-
-  if (ControllersEqual(aController, mControllers.back())) {
-    // The active view deactivated, so we need to restore the previous
-    // view's content controller
-    LOGT("Popping content controller %u", aController->GetUniqueID());
-    mControllers.pop_back();
-    if (mCompositorSession && !mControllers.empty()) {
-      mCompositorSession->SetContentController(mControllers.back());
-    }
-  } else {
-    // An inactive view deactivated, so we erase all instances of its
-    // content controllers from the stack
-    LOGT("Erasing content controller %u", aController->GetUniqueID());
-    mControllers.erase(std::remove_if(mControllers.begin(), mControllers.end(),
-                                      [aController](const EmbedContentController *aOther) {
-      return ControllersEqual(aController, aOther);
-    }), mControllers.end());
-  }
-  LOG_CONTROLLER_STACK;
-}
-
 RefPtr<mozilla::layers::IAPZCTreeManager> nsWindow::GetAPZCTreeManager()
 {
   if (mCompositorSession) {
@@ -632,6 +561,25 @@ nsWindow::DispatchChromeTextEvent(
     const nsAString& aCommit, const nsAString& aPreEdit,
     int32_t aReplacementStart, int32_t aReplacementLength)
 {
+  return DispatchChromeTextEventInternal(
+    aCommit, aPreEdit, aReplacementStart, 0, aReplacementLength, false);
+}
+
+bool
+nsWindow::DispatchChromeTextEventAtOffset(
+    const nsAString& aCommit, const nsAString& aPreEdit,
+    uint32_t aReplacementOffset, int32_t aReplacementLength)
+{
+  return DispatchChromeTextEventInternal(
+    aCommit, aPreEdit, 0, aReplacementOffset, aReplacementLength, true);
+}
+
+bool
+nsWindow::DispatchChromeTextEventInternal(
+    const nsAString& aCommit, const nsAString& aPreEdit,
+    int32_t aReplacementStart, uint32_t aReplacementOffset,
+    int32_t aReplacementLength, bool aUseReplacementOffset)
+{
   MOZ_ASSERT(NS_IsMainThread());
   RefPtr<nsWindow> self(this);
   RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
@@ -657,24 +605,30 @@ nsWindow::DispatchChromeTextEvent(
   };
 
   if (aReplacementLength > 0) {
-    WidgetQueryContentEvent querySelection(
-      true, eQuerySelectedText, widget);
-    widget->DispatchEvent(&querySelection);
-    if (!querySelection.FoundSelection() || !stillAttached()) {
-      return false;
-    }
+    uint32_t replacementOffset = aReplacementOffset;
+    if (!aUseReplacementOffset) {
+      WidgetQueryContentEvent querySelection(
+        true, eQuerySelectedText, widget);
+      widget->DispatchEvent(&querySelection);
+      if (!querySelection.FoundSelection() || !stillAttached()) {
+        return false;
+      }
 
-    const int64_t replacementOffset =
-      static_cast<int64_t>(querySelection.mReply->StartOffset()) +
-      aReplacementStart;
-    if (replacementOffset < 0 || replacementOffset > UINT32_MAX ||
-        static_cast<uint64_t>(aReplacementLength) >
-          UINT32_MAX - static_cast<uint64_t>(replacementOffset)) {
+      const int64_t relativeOffset =
+        static_cast<int64_t>(querySelection.mReply->StartOffset()) +
+        aReplacementStart;
+      if (relativeOffset < 0 || relativeOffset > UINT32_MAX) {
+        return false;
+      }
+      replacementOffset = static_cast<uint32_t>(relativeOffset);
+    }
+    if (static_cast<uint64_t>(aReplacementLength) >
+        UINT32_MAX - static_cast<uint64_t>(replacementOffset)) {
       return false;
     }
 
     WidgetSelectionEvent selection(true, eSetSelection, widget);
-    selection.mOffset = static_cast<uint32_t>(replacementOffset);
+    selection.mOffset = replacementOffset;
     selection.mLength = static_cast<uint32_t>(aReplacementLength);
     selection.mReversed = false;
     selection.mExpandToClusterBoundary = false;
@@ -859,13 +813,13 @@ nsWindow::ConfigureAPZCTreeManager()
     ConfigureChromeAPZ();
     return;
   }
-  LOGT("Do nothing - APZEventState configured in EmbedLiteViewChild");
+  LOGT("Chrome APZ waits for the hosted AppWindow widget");
 }
 
 void
 nsWindow::ConfigureAPZControllerThread()
 {
-  LOGT("Do nothing - APZController thread configured in EmbedLiteViewParent");
+  LOGT("APZ controller thread is configured by EmbedLiteWindowParent");
 }
 
 already_AddRefed<GeckoContentController>

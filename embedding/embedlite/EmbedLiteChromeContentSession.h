@@ -95,6 +95,7 @@ public:
                           float aWidth, float aHeight) = 0;
 
   virtual bool SetDesktopMode(uint64_t aTabId, bool aDesktopMode) = 0;
+  virtual bool SetJavascriptEnabled(bool aEnabled) = 0;
   virtual bool SetThrottlePainting(uint64_t aTabId, bool aThrottle) = 0;
   virtual bool SuspendTimeouts(uint64_t aTabId) = 0;
   virtual bool ResumeTimeouts(uint64_t aTabId) = 0;

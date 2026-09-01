@@ -25,10 +25,8 @@ if CONFIG['ENABLE_TESTS']:
 FINAL_LIBRARY = 'xul'
 
 XPIDL_SOURCES += [
-    'embedshared/EmbedLiteViewIface.idl',
     'modules/nsIEmbedAppService.idl',
     'modules/nsIEmbedLiteJSON.idl',
-    'utils/nsIEmbedBrowserChromeListener.idl',
 ]
 
 XPIDL_MODULE = 'embedLite'
@@ -46,28 +44,16 @@ EXPORTS.mozilla.embedlite += [
     'EmbedLiteChromeSession.h',
     'EmbedLiteChromeTabSession.h',
     'EmbedLiteMessagePump.h',
-    'EmbedLiteView.h',
     'EmbedLiteWindow.h',
-    'embedprocess/EmbedLiteAppProcessChild.h',
-    'embedprocess/EmbedLiteAppProcessParent.h',
-    'embedshared/EmbedLiteAppChild.h',
-    'embedshared/EmbedLiteAppChildIface.h',
-    'embedshared/EmbedLiteAppParent.h',
+    'embedshared/EmbedLiteCompositorBridgeParent.h',
+    'embedshared/EmbedLiteHostedWindow.h',
     'embedshared/EmbedLitePuppetWidget.h',
-    'embedshared/EmbedLiteViewChild.h',
-    'embedshared/EmbedLiteViewChildIface.h',
-    'embedshared/EmbedLiteViewParent.h',
-    'embedshared/EmbedLiteWindowChild.h',
     'embedshared/EmbedLiteWindowParent.h',
     'embedshared/nsWindow.h',
     'embedshared/PuppetWidgetBase.h',
-    'embedthread/EmbedLiteCompositorBridgeParent.h',
-    'utils/BrowserChildHelper.h',
-    'utils/EmbedLiteBrowserInit.h',
     'utils/EmbedLiteSecurity.h',
     'utils/EmbedLiteXulAppInfo.h',
     'utils/EmbedLog.h',
-    'utils/WebBrowserChrome.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -77,56 +63,32 @@ EXPORTS.mozilla.dom += [
 EXPORTS.ipc = ['embedhelpers/EmbedIPCUtils.h']
 
 UNIFIED_SOURCES += [
-    'embedhelpers/EmbedLiteSubThread.cpp',
     'embedhelpers/EmbedLiteUILoop.cpp',
     'EmbedLiteApp.cpp',
     'EmbedLiteMessagePump.cpp',
-    'EmbedLiteView.cpp',
     'EmbedLiteWindow.cpp',
-    'embedprocess/EmbedLiteAppProcessChild.cpp',
-    'embedprocess/EmbedLiteAppProcessParent.cpp',
-    'embedprocess/EmbedLiteContentProcess.cpp',
-    'embedprocess/EmbedLiteViewProcessChild.cpp',
-    'embedprocess/EmbedLiteViewProcessParent.cpp',
-    'embedshared/EmbedLiteAppChild.cpp',
-    'embedshared/EmbedLiteAppParent.cpp',
     'embedshared/EmbedLiteChromeSessionChild.cpp',
+    'embedshared/EmbedLiteHostedWindow.cpp',
     'embedshared/EmbedLitePuppetWidget.cpp',
-    'embedshared/EmbedLiteViewChild.cpp',
-    'embedshared/EmbedLiteViewParent.cpp',
-    'embedshared/EmbedLiteWindowChild.cpp',
     'embedshared/EmbedLiteWindowParent.cpp',
     'embedshared/nsWindow.cpp',
     'embedshared/PuppetWidgetBase.cpp',
-    'embedthread/EmbedContentController.cpp',
-    'embedthread/EmbedLiteAppThreadChild.cpp',
-    'embedthread/EmbedLiteAppThreadParent.cpp',
-    'embedthread/EmbedLiteViewThreadChild.cpp',
-    'embedthread/EmbedLiteWindowThreadChild.cpp',
     'modules/EmbedFrame.cpp',
     'modules/EmbedLiteAppService.cpp',
     'modules/EmbedLiteJSON.cpp',
-    'utils/BrowserChildHelper.cpp',
     'utils/DirProvider.cpp',
-    'utils/EmbedLiteBrowserInit.cpp',
     'utils/EmbedLiteSecurity.cpp',
     'utils/EmbedLiteXulAppInfo.cpp',
     'utils/EmbedLog.cpp',
     'utils/GeckoLoader.cpp',
-    'utils/WebBrowserChrome.cpp',
-    'utils/WindowCreator.cpp',
 ]
 
 SOURCES += [
-    'embedthread/EmbedLiteCompositorBridgeParent.cpp',
-    'embedthread/EmbedLiteViewThreadParent.cpp',
-    'embedthread/EmbedLiteWindowThreadParent.cpp',
+    'embedshared/EmbedLiteCompositorBridgeParent.cpp',
 ]
 
 IPDL_SOURCES += [
-    'PEmbedLiteApp.ipdl',
-    'PEmbedLiteView.ipdl',
-    'PEmbedLiteWindow.ipdl',
+    'EmbedLiteChromeTypes.ipdlh',
 ]
 
 LOCAL_INCLUDES += [
@@ -146,9 +108,7 @@ LOCAL_INCLUDES += [
     '/xpcom/build',
     '/xpcom/threads',
     'embedhelpers',
-    'embedprocess',
     'embedshared',
-    'embedthread',
     'modules',
     'utils',
 ]

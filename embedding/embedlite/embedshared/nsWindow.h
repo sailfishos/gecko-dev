@@ -14,7 +14,6 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"           // for InputContext
 #include "nsStringFwd.h"
-#include <list>
 
 namespace mozilla {
 
@@ -24,8 +23,7 @@ class TextEventDispatcher;
 
 namespace embedlite {
 
-class EmbedLiteWindowChild;
-class EmbedContentController;
+class EmbedLiteHostedWindow;
 class EmbedLitePuppetWidget;
 class EmbedLiteChromeInputTransactionListener;
 class nsWindow;
@@ -54,7 +52,7 @@ private:
 class nsWindow : public PuppetWidgetBase
 {
 public:
-  nsWindow(EmbedLiteWindowChild* window);
+  nsWindow(EmbedLiteHostedWindow* window);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -97,8 +95,6 @@ public:
   uint32_t GetUniqueID() const;
   layers::LayersId GetRootLayerId() const;
 
-  void Activate(EmbedContentController* aController);
-  void Deactivate(EmbedContentController* aController);
   RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
   void AttachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
   void DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
@@ -110,6 +106,10 @@ public:
                                const nsAString& aPreEdit,
                                int32_t aReplacementStart,
                                int32_t aReplacementLength);
+  bool DispatchChromeTextEventAtOffset(const nsAString& aCommit,
+                                       const nsAString& aPreEdit,
+                                       uint32_t aReplacementOffset,
+                                       int32_t aReplacementLength);
   bool DispatchChromeKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
                               int32_t aCharCode);
   bool DispatchChromeKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,
@@ -135,19 +135,22 @@ protected:
 
 private:
   nsWindow();
+  bool DispatchChromeTextEventInternal(const nsAString& aCommit,
+                                       const nsAString& aPreEdit,
+                                       int32_t aReplacementStart,
+                                       uint32_t aReplacementOffset,
+                                       int32_t aReplacementLength,
+                                       bool aUseReplacementOffset);
   void ConfigureChromeAPZ();
   void EndChromeInputTransaction();
   bool mFirstViewCreated;
   bool mChromeInputReady;
   bool mChromeWindowFocused;
-  EmbedLiteWindowChild* mWindow; // Not owned, can be null.
+  EmbedLiteHostedWindow* mWindow; // Not owned, can be null.
   EmbedLitePuppetWidget* mChromeHostedWidget; // Not owned.
   RefPtr<EmbedLiteChromeInputTransactionListener>
     mChromeInputTransactionListener;
   InputContext mInputContext;
-
-  typedef std::list<EmbedContentController *> ControllerList;
-  ControllerList mControllers;
 
   friend already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow();
   friend already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow();
