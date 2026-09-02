@@ -145,6 +145,7 @@ Patch84:    0084-sailfishos-embedlite-Handle-in-process-history-trave.patch
 Patch85:    0085-sailfishos-build-Enable-llama-half-precision-on-ARM3.patch
 Patch86:    0086-sailfishos-build-Isolate-SB2-Rust-compiler-flags.patch
 Patch87:    0087-sailfishos-embedlite-Safely-mark-child-message-manag.patch
+Patch88:    0088-sailfishos-neterror-Close-popup-certificate-errors.patch
 
 BuildRequires:  rust >= 1.90.0
 BuildRequires:  rust-std-static >= 1.90.0
