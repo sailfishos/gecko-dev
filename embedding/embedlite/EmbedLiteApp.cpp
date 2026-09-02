@@ -372,13 +372,16 @@ EmbedLiteApp::Stop()
   const State oldState = mState;
   SetState(DESTROYING);
   if (oldState == INITIALIZED) {
-    std::vector<EmbedLiteWindow*> windows;
-    windows.reserve(mWindows.size());
+    std::vector<uint32_t> windowIds;
+    windowIds.reserve(mWindows.size());
     for (const auto& entry : mWindows) {
-      windows.push_back(entry.second);
+      windowIds.push_back(entry.first);
     }
-    for (EmbedLiteWindow* window : windows) {
-      window->Destroy();
+    for (uint32_t id : windowIds) {
+      const auto found = mWindows.find(id);
+      if (found != mWindows.end()) {
+        found->second->Destroy();
+      }
     }
   }
   MaybeFinishShutdown();

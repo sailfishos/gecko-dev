@@ -753,20 +753,30 @@ bool EmbedLiteWindowParent::ResolveBeforeUnloadPrompt(
 void EmbedLiteWindowParent::ReplayChromeSessionState()
 {
   MOZ_ASSERT(mChromeSessionListener);
+  RefPtr<EmbedLiteWindowParent> deathGrip(this);
+  EmbedLiteChromeSessionListener* const listener = mChromeSessionListener;
 
   if (mHasLocation) {
-    mChromeSessionListener->OnLocationChanged(
+    listener->OnLocationChanged(
       mLocation.get(), mCanGoBack, mCanGoForward);
+    if (mDestroying || mChromeSessionListener != listener) {
+      return;
+    }
   }
   if (mHasLoadStarted) {
-    mChromeSessionListener->OnLoadStarted(mLoadStartedLocation.get());
+    listener->OnLoadStarted(mLoadStartedLocation.get());
+    if (mDestroying || mChromeSessionListener != listener) {
+      return;
+    }
   }
   if (mHasLoadProgress) {
-    mChromeSessionListener->OnLoadProgress(mLoadProgress, mLoadCurrent,
-                                           mLoadTotal);
+    listener->OnLoadProgress(mLoadProgress, mLoadCurrent, mLoadTotal);
+    if (mDestroying || mChromeSessionListener != listener) {
+      return;
+    }
   }
   if (mHasTitle) {
-    mChromeSessionListener->OnTitleChanged(mTitle.get());
+    listener->OnTitleChanged(mTitle.get());
   }
 }
 
@@ -917,6 +927,7 @@ void EmbedLiteWindowParent::NotifySessionsDestroyed()
 void EmbedLiteWindowParent::OnInitialized(bool aSuccess)
 {
   MOZ_ASSERT(mWindow);
+  RefPtr<EmbedLiteWindowParent> deathGrip(this);
   if (aSuccess) {
     mInitialized = true;
     for (const nsCString& script : mContentRegistrations.FrameScripts()) {
@@ -936,6 +947,9 @@ void EmbedLiteWindowParent::OnInitialized(bool aSuccess)
     }
     if (aSuccess) {
       ReplayChromeInputContext();
+      if (mDestroying) {
+        return;
+      }
       mListener->WindowInitialized();
       return;
     }
@@ -1127,7 +1141,11 @@ bool EmbedLiteWindowParent::OnTabSnapshot(
   if (!contentStateMatchesSelection) {
     mHasContentState = false;
   }
+  RefPtr<EmbedLiteWindowParent> deathGrip(this);
   ReplayTabSnapshot();
+  if (mDestroying) {
+    return true;
+  }
   UpdateSelectedChromeSessionState();
   return true;
 }
