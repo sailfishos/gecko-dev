@@ -231,6 +231,16 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   mozilla::Preferences::InitializeUserPrefs();
   mozilla::Preferences::FinishInitializingUserPrefs();
 
+  nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
+  static const char16_t kStartup[] = {'s', 't', 'a', 'r',
+                                      't', 'u', 'p', '\0'};
+
+  // QuotaManager registers its observer during XPCOM initialization. Notify it
+  // before loading EmbedLite services, whose module imports can open IndexedDB.
+  if (obsSvc) {
+    obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
+  }
+
   // EmbedLite initializes XPCOM directly, so start only its own services here.
   // Gecko's app-startup category also contains toolkit services that expect
   // the full XRE_main profile startup sequence. Existing EmbedLite services
@@ -238,16 +248,9 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   NS_CreateServicesFromCategory("embedlite-startup", nullptr,
                                 "app-startup", nullptr);
 
-  // XRE emits these after app-startup services are registered and profile prefs
-  // are ready. EmbedLite bypasses that startup path, but profile-aware services
-  // such as the ServiceWorker registrar, remote worker launcher, quota manager,
-  // and EmbedLite JS components still wait for the profile notifications before
-  // becoming usable.
-  nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
+  // Startup services register their profile-aware observers above, so complete
+  // profile initialization after creating them.
   if (obsSvc) {
-    static const char16_t kStartup[] = {'s', 't', 'a', 'r',
-                                        't', 'u', 'p', '\0'};
-    obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
     obsSvc->NotifyObservers(nullptr, "profile-after-change", kStartup);
   }
 
