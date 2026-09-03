@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 5 Aug 2026 11:25:50 +0200
+Subject: [sailfishos][protocol] Restore external-protocol permission gate
+
+Allow embedders to delegate external-protocol permission handling to
+their platform UI while retaining the secure default.
+---
+ .../mozapps/handling/ContentDispatchChooser.sys.mjs    | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
+index 8d89744fc8d9..21be36db7f43 100644
+--- a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
++++ b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
+@@ -20,6 +20,12 @@ XPCOMUtils.defineLazyPreferenceGetter(
+   "network.protocol-handler.prompt-from-external",
+   true
+ );
++XPCOMUtils.defineLazyPreferenceGetter(
++  gPrefs,
++  "requireExternalProtocolPermission",
++  "security.external_protocol_requires_permission",
++  true
++);
+ 
+ const PROTOCOL_HANDLER_OPEN_PERM_KEY = "open-protocol-handler";
+ const PERMISSION_KEY_DELIMITER = "^";
+@@ -290,6 +296,10 @@ export class nsContentDispatchChooser {
+     aTriggeredExternally,
+     isStandardProtocol
+   ) {
++    if (!gPrefs.requireExternalProtocolPermission) {
++      return true;
++    }
++
+     // If a handler is set to open externally by default we skip the dialog.
+     const { type, hasDefaultHandler, preferredApplicationHandler } = aHandler;
+ 

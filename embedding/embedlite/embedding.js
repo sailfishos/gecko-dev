@@ -135,7 +135,7 @@ pref("browser.cache.memory.capacity", 1024); // kilobytes
 pref("browser.cache.memory_limit", 5120); // 5 MB
 
 // Sailfish handles download confirmation and lifecycle UI outside Gecko.
-pref("browser.download.useToolkitPrompter", false);
+pref("browser.download.skipConfirmLaunchExecutable", true);
 
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes

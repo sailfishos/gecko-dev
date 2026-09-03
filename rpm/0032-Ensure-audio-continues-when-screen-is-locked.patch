@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Thu, 29 Oct 2020 15:20:18 +0200
+Subject: Ensure audio continues when screen is locked
+
+Contributes to JB#51747.
+
+Base media suspension and self-reference retention on document visibility so
+screen locking does not stop otherwise active audio.
+
+Publish decoder metadata and play/pause transitions to the Sailfish media
+resource observer.
+---
+ dom/media/MediaDecoder.cpp                  | 28 +++++++++++++++++++++
+ dom/media/mediaelement/HTMLMediaElement.cpp |  9 +++----
+ 2 files changed, 32 insertions(+), 5 deletions(-)
+
+diff --git a/dom/media/MediaDecoder.cpp b/dom/media/MediaDecoder.cpp
+index 37ba39bf0138..67fc11c7b277 100644
+--- a/dom/media/MediaDecoder.cpp
++++ b/dom/media/MediaDecoder.cpp
+@@ -22,6 +22,7 @@
+ #include "WindowRenderer.h"
+ #include "mozilla/AbstractThread.h"
+ #include "mozilla/Preferences.h"
++#include "mozilla/Services.h"
+ #include "mozilla/StaticPrefs_media.h"
+ #include "mozilla/StaticPtr.h"
+ #include "mozilla/dom/DOMTypes.h"
+@@ -31,8 +32,10 @@
+ #include "nsContentUtils.h"
+ #include "nsError.h"
+ #include "nsIMemoryReporter.h"
++#include "nsIObserverService.h"
+ #include "nsPrintfCString.h"
+ #include "nsServiceManagerUtils.h"
++#include "nsString.h"
+ #include "nsTArray.h"
+ 
+ using namespace mozilla::dom;
+@@ -54,6 +57,15 @@ LazyLogModule gMediaDecoderLog("MediaDecoder");
+ 
+ #define NS_DispatchToMainThread(...) CompileError_UseAbstractMainThreadInstead
+ 
++static void SendMediaDecoderInfo(const nsString& aData) {
++  MOZ_ASSERT(NS_IsMainThread());
++  if (nsCOMPtr<nsIObserverService> observerService =
++          services::GetObserverService()) {
++    observerService->NotifyObservers(nullptr, "media-decoder-info",
++                                     aData.get());
++  }
++}
++
+ class MediaMemoryTracker : public nsIMemoryReporter {
+   virtual ~MediaMemoryTracker();
+ 
+@@ -721,6 +733,12 @@ void MediaDecoder::MetadataLoaded(
+       aInfo->mAudio.mChannels, aInfo->mAudio.mRate, aInfo->HasAudio(),
+       aInfo->HasVideo());
+ 
++  nsString data;
++  data.AppendPrintf(
++      "{ \"owner\" : \"%p\", \"state\": \"meta\", \"a\" : %i, \"v\" : %i }",
++      this, aInfo->HasAudio(), aInfo->HasVideo());
++  SendMediaDecoderInfo(data);
++
+   mMediaSeekable = aInfo->mMediaSeekable;
+   mMediaSeekableOnlyInBufferedRanges =
+       aInfo->mMediaSeekableOnlyInBufferedRanges;
+@@ -975,6 +993,16 @@ void MediaDecoder::ChangeState(PlayState aState) {
+   }
+ 
+   if (mPlayState != aState) {
++    nsString data;
++    if (aState == PLAY_STATE_PLAYING) {
++      data.AppendPrintf("{ \"owner\" : \"%p\", \"state\": \"play\" }",
++                        this);
++    } else {
++      data.AppendPrintf("{ \"owner\" : \"%p\", \"state\": \"pause\" }",
++                        this);
++    }
++    SendMediaDecoderInfo(data);
++
+     DDLOG(DDLogCategory::Property, "play_state", EnumValueToString(aState));
+     LOG("Play state changes from %s to %s", EnumValueToString(mPlayState),
+         EnumValueToString(aState));
+diff --git a/dom/media/mediaelement/HTMLMediaElement.cpp b/dom/media/mediaelement/HTMLMediaElement.cpp
+index dbc753689a20..7e0920c2bd13 100644
+--- a/dom/media/mediaelement/HTMLMediaElement.cpp
++++ b/dom/media/mediaelement/HTMLMediaElement.cpp
+@@ -7311,11 +7311,10 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
+     NotifyDecoderActivityChanges();
+   }
+ 
+-  // We would suspend media when the document is inactive, or its docshell has
+-  // been set to hidden and explicitly wants to suspend media. In those cases,
+-  // the media would be not visible and we don't want them to continue playing.
++  // Suspend media when the document is hidden, or when its docshell is
++  // inactive and explicitly requests media suspension.
+   bool shouldSuspend =
+-      !OwnerDoc()->IsActive() || ShouldBeSuspendedByInactiveDocShell();
++      OwnerDoc()->Hidden() || ShouldBeSuspendedByInactiveDocShell();
+   SuspendOrResumeElement(shouldSuspend);
+ 
+   // If the owning document has become inactive we should shutdown the CDM.
+@@ -7358,7 +7357,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
+   // See the comment at the top of this file for the explanation of this
+   // boolean expression.
+   bool needSelfReference =
+-      !mShuttingDown && ownerDoc->IsActive() &&
++      !mShuttingDown && !ownerDoc->Hidden() &&
+       (mDelayingLoadEvent || (!mPaused && !Ended()) ||
+        (mDecoder && mDecoder->IsSeeking()) || IsEligibleForAutoplay() ||
+        (mMediaSource ? mProgressTimer : mNetworkState == NETWORK_LOADING));
