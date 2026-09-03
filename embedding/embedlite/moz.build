@@ -15,7 +15,7 @@ JS_PREFERENCE_FILES += [
 
 # EmbedLite does not traverse the Firefox application directory, but toolkit's
 # NewTabUtils imports this module on desktop builds.
-FINAL_TARGET_FILES.browser.modules += [
+FINAL_TARGET_FILES.modules += [
     '/browser/modules/BrowserWindowTracker.sys.mjs',
 ]
 
