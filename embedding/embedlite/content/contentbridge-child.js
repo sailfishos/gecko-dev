@@ -12,26 +12,52 @@
   let timeoutsSuspended = false;
   let nextPopupId = 0;
   let lastOrientation = "";
+  let orientationPaintBaseline = 0;
+  let orientationPaintPending = false;
   const blockedPopups = new Map();
   const viewportChanged = () => state();
 
+  function contentGeometry() {
+    return {
+      width: Math.max(0, Math.trunc(content.innerWidth)),
+      height: Math.max(0, Math.trunc(content.innerHeight)),
+    };
+  }
+
   function contentOrientation() {
+    const { width, height } = contentGeometry();
+    const landscape = width >= height;
     const orientation = content.screen?.mozOrientation ||
       content.screen?.orientation?.type;
     if (["portrait-primary", "portrait-secondary", "landscape-primary",
-         "landscape-secondary"].includes(orientation)) {
+         "landscape-secondary"].includes(orientation) &&
+        orientation.startsWith(landscape ? "landscape" : "portrait")) {
       return orientation;
     }
-    return content.innerWidth >= content.innerHeight
-      ? "landscape-primary" : "portrait-primary";
+    return landscape ? "landscape-primary" : "portrait-primary";
   }
 
-  function reportOrientation(force = false) {
+  function reportOrientation(force = false, painted = false) {
     const orientation = contentOrientation();
     if (force || orientation !== lastOrientation) {
       lastOrientation = orientation;
-      sendAsyncMessage("embed:contentOrientationChanged", { orientation });
+      const geometry = contentGeometry();
+      sendAsyncMessage("embed:contentOrientationChanged", {
+        orientation,
+        width: geometry.width,
+        height: geometry.height,
+        painted,
+      });
     }
+  }
+
+  function waitForOrientationPaint() {
+    try {
+      orientationPaintBaseline = content.windowUtils.lastTransactionId;
+    } catch (error) {
+      orientationPaintBaseline = 0;
+    }
+    orientationPaintPending = true;
   }
 
   function applyDynamicToolbarHeight() {
@@ -166,6 +192,7 @@
       return;
     }
     firstPaint = false;
+    orientationPaintPending = false;
     if (observedViewport) {
       observedViewport.removeEventListener("scroll", viewportChanged);
       observedViewport.removeEventListener("resize", viewportChanged);
@@ -196,6 +223,7 @@
       return;
     }
     firstPaint = false;
+    orientationPaintPending = false;
   }, true);
 
   addEventListener("MozAfterPaint", event => {
@@ -204,6 +232,11 @@
       applyDynamicToolbarHeight();
       state(Math.trunc(event.boundingClientRect?.x || 0),
             Math.trunc(event.boundingClientRect?.y || 0));
+    }
+    if (orientationPaintPending &&
+        event.transactionId > orientationPaintBaseline) {
+      orientationPaintPending = false;
+      reportOrientation(true, true);
     }
   }, true);
   addEventListener("fullscreenchange", () => state(), true);
@@ -214,11 +247,12 @@
   }, true);
   addEventListener("resize", () => {
     state();
-    reportOrientation();
+    waitForOrientationPaint();
   }, true);
-  addEventListener("mozorientationchange", () => reportOrientation(), true);
+  addEventListener(
+    "mozorientationchange", () => waitForOrientationPaint(), true);
   content.screen?.orientation?.addEventListener(
-    "change", () => reportOrientation());
+    "change", () => waitForOrientationPaint());
 
   observedViewport = content.visualViewport;
   observedViewport?.addEventListener("scroll", viewportChanged);
