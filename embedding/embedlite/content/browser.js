@@ -79,8 +79,13 @@
     }
   }
 
+  function contentMessageManager(browser) {
+    return browser.messageManager || browser.frameLoader?.messageManager || null;
+  }
+
   function messageListener(browser, name) {
-    if (!browser.messageManager) {
+    const messageManager = contentMessageManager(browser);
+    if (!messageManager) {
       return;
     }
     let byName = listeners.get(browser);
@@ -101,7 +106,7 @@
       }
       return {};
     };
-    browser.messageManager.addMessageListener(name, listener, true);
+    messageManager.addMessageListener(name, listener, true);
     byName.set(name, listener);
   }
 
@@ -111,14 +116,16 @@
     if (!listener) {
       return;
     }
-    if (browser.messageManager) {
-      browser.messageManager.removeMessageListener(name, listener);
+    const messageManager = contentMessageManager(browser);
+    if (messageManager) {
+      messageManager.removeMessageListener(name, listener);
     }
     byName.delete(name);
   }
 
   function loadFrameScript(browser, uri) {
-    if (!browser.messageManager) {
+    const messageManager = contentMessageManager(browser);
+    if (!messageManager) {
       return;
     }
     let loaded = loadedFrameScripts.get(browser);
@@ -129,12 +136,12 @@
     if (loaded.has(uri)) {
       return;
     }
-    browser.messageManager.loadFrameScript(uri, true, true);
+    messageManager.loadFrameScript(uri, true, true);
     loaded.add(uri);
   }
 
   function attach(browser) {
-    if (!browser.messageManager) {
+    if (!contentMessageManager(browser)) {
       return;
     }
     messageListener(browser, INTERNAL_STATE);
@@ -218,11 +225,14 @@
           messageNames.delete(name);
           removeMessageListener(browser, name);
           break;
-        case "send-message":
-          browser.messageManager?.sendAsyncMessage(name, JSON.parse(data));
+        case "send-message": {
+          const messageManager = contentMessageManager(browser);
+          messageManager?.sendAsyncMessage(name, JSON.parse(data));
           break;
+        }
         default: {
-          if (!browser.messageManager) {
+          const messageManager = contentMessageManager(browser);
+          if (!messageManager) {
             return;
           }
           const parsed = JSON.parse(data);
@@ -230,7 +240,7 @@
             parsed.text = name;
             parsed.userAgent = name;
           }
-          browser.messageManager.sendAsyncMessage(
+          messageManager.sendAsyncMessage(
             "EmbedLiteChrome:Command", { command, data: parsed });
           break;
         }
