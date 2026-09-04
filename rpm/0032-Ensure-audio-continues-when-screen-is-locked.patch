@@ -85,10 +85,10 @@ index 37ba39bf0138..67fc11c7b277 100644
      LOG("Play state changes from %s to %s", EnumValueToString(mPlayState),
          EnumValueToString(aState));
 diff --git a/dom/media/mediaelement/HTMLMediaElement.cpp b/dom/media/mediaelement/HTMLMediaElement.cpp
-index dbc753689a20..7e0920c2bd13 100644
+index 69922d2c5a8e..aa7f010579c8 100644
 --- a/dom/media/mediaelement/HTMLMediaElement.cpp
 +++ b/dom/media/mediaelement/HTMLMediaElement.cpp
-@@ -7311,11 +7311,10 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
+@@ -7317,11 +7317,10 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
      NotifyDecoderActivityChanges();
    }
  
@@ -103,7 +103,7 @@ index dbc753689a20..7e0920c2bd13 100644
    SuspendOrResumeElement(shouldSuspend);
  
    // If the owning document has become inactive we should shutdown the CDM.
-@@ -7358,7 +7357,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
+@@ -7364,7 +7363,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
    // See the comment at the top of this file for the explanation of this
    // boolean expression.
    bool needSelfReference =

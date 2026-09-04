@@ -371,7 +371,7 @@ index 5b0cc5e133f5..ef52174f7cf2 100644
      *aHandlerExists = false;
  #endif
 diff --git a/xpcom/io/moz.build b/xpcom/io/moz.build
-index d5817c223050..7d0aa82a17c3 100644
+index 7e27151ac634..d90bd2f2e2e8 100644
 --- a/xpcom/io/moz.build
 +++ b/xpcom/io/moz.build
 @@ -59,6 +59,8 @@ else:

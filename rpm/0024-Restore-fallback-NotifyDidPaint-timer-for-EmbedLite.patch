@@ -14,7 +14,7 @@ acknowledgement and presentation teardown.
  2 files changed, 127 insertions(+), 2 deletions(-)
 
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index f304a4ecf53b..89da45186b2a 100644
+index 7e54b054a3ae..333a5fb72123 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
 @@ -33,6 +33,9 @@
@@ -27,7 +27,7 @@ index f304a4ecf53b..89da45186b2a 100644
  #include "mozilla/RestyleManager.h"
  #include "mozilla/SMILAnimationController.h"
  #include "mozilla/ServoBindings.h"
-@@ -975,6 +978,12 @@ void nsPresContext::DetachPresShell() {
+@@ -979,6 +982,12 @@ void nsPresContext::DetachPresShell() {
  
    mPresShell = nullptr;
  
@@ -40,7 +40,7 @@ index f304a4ecf53b..89da45186b2a 100644
    CancelManagedPostRefreshObservers();
  
    if (mAnimationEventDispatcher) {
-@@ -2315,7 +2324,8 @@ void nsPresContext::NotifyInvalidation(TransactionId aTransactionId,
+@@ -2319,7 +2328,8 @@ void nsPresContext::NotifyInvalidation(TransactionId aTransactionId,
                                         const nsRect& aRect) {
    MOZ_ASSERT(GetContainerWeak(), "Invalidation in detached pres context");
  
@@ -50,7 +50,7 @@ index f304a4ecf53b..89da45186b2a 100644
      TransactionInvalidations* transaction =
          pc->GetInvalidations(aTransactionId);
      if (transaction) {
-@@ -2325,6 +2335,14 @@ void nsPresContext::NotifyInvalidation(TransactionId aTransactionId,
+@@ -2329,6 +2339,14 @@ void nsPresContext::NotifyInvalidation(TransactionId aTransactionId,
      transaction->mTransactionId = aTransactionId;
    }
  
@@ -65,7 +65,7 @@ index f304a4ecf53b..89da45186b2a 100644
    TransactionInvalidations* transaction = GetInvalidations(aTransactionId);
    MOZ_ASSERT(transaction);
    transaction->mInvalidations.AppendElement(aRect);
-@@ -2403,11 +2421,18 @@ void nsPresContext::NotifyRevokingDidPaint(TransactionId aTransactionId) {
+@@ -2407,11 +2425,18 @@ void nsPresContext::NotifyRevokingDidPaint(TransactionId aTransactionId) {
  
  void nsPresContext::NotifyDidPaintForSubtree(
      TransactionId aTransactionId, const mozilla::TimeStamp& aTimeStamp) {
@@ -85,7 +85,7 @@ index f304a4ecf53b..89da45186b2a 100644
          timing->NotifyContentfulCompositeForRootContentDocument(aTimeStamp);
        }
      }
-@@ -3136,6 +3161,80 @@ nsRootPresContext::nsRootPresContext(dom::Document* aDocument,
+@@ -3140,6 +3165,80 @@ nsRootPresContext::nsRootPresContext(dom::Document* aDocument,
                                       nsPresContextType aType)
      : nsPresContext(aDocument, aType) {}
  

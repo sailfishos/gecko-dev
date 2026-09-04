@@ -561,7 +561,7 @@ index 000000000000..4432494acd25
 +../../../gecko-qt/dom/system/qt
 \ No newline at end of file
 diff --git a/gfx/2d/2D.h b/gfx/2d/2D.h
-index 787bf60e1490..d262558e2073 100644
+index ca467753cbd1..2669738d670d 100644
 --- a/gfx/2d/2D.h
 +++ b/gfx/2d/2D.h
 @@ -34,7 +34,7 @@
@@ -573,7 +573,7 @@ index 787bf60e1490..d262558e2073 100644
  #  ifndef MOZ_ENABLE_FREETYPE
  #    define MOZ_ENABLE_FREETYPE
  #  endif
-@@ -2224,7 +2224,7 @@ class GFX2D_API Factory {
+@@ -2231,7 +2231,7 @@ class GFX2D_API Factory {
        bool aHasColorGlyphs = false);
  #endif
  
@@ -934,7 +934,7 @@ index 4ac42437a043..5e3fda3b28ac 100644
    UniquePtr<SandboxPolicy> policy;
  
 diff --git a/gfx/thebes/gfxFont.h b/gfx/thebes/gfxFont.h
-index c2d2d8128a2e..1a0a61d93cd9 100644
+index a68bdfce5f9e..135942959db0 100644
 --- a/gfx/thebes/gfxFont.h
 +++ b/gfx/thebes/gfxFont.h
 @@ -83,7 +83,7 @@ typedef struct _cairo_scaled_font cairo_scaled_font_t;
@@ -1477,10 +1477,10 @@ index 4ce81491b7be..fb93c31210e9 100644
  #ifdef XP_UNIX
  Result<Ok, LaunchError> PosixProcessLauncher::DoSetup() {
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index adfe90e07214..f304a4ecf53b 100644
+index 10e71c54e9ef..7e54b054a3ae 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
-@@ -2152,6 +2152,11 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
+@@ -2156,6 +2156,11 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
      return;
    }
  
@@ -1492,7 +1492,7 @@ index adfe90e07214..f304a4ecf53b 100644
    // Note: this method is called without a font when rules in the userfont set
    // are updated.
    //
-@@ -2161,7 +2166,7 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
+@@ -2165,7 +2170,7 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
    //
    // TODO(emilio): We could be more granular if we knew which families have
    // potentially changed.
@@ -1515,7 +1515,7 @@ index 1f9613b8cd93..7661db0fd79e 100644
        return true;
  #elif defined(XP_MACOSX)
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 239164bb2c79..722d74c6ebef 100644
+index fd6076edbb0b..69dac4e6d808 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -7768,7 +7768,7 @@

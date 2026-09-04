@@ -10,10 +10,10 @@ video has no audio track, then recompute preload once metadata is known.
  1 file changed, 5 insertions(+)
 
 diff --git a/dom/media/mediaelement/HTMLMediaElement.cpp b/dom/media/mediaelement/HTMLMediaElement.cpp
-index 7e0920c2bd13..0e378e5ef20b 100644
+index aa7f010579c8..438295c8a84e 100644
 --- a/dom/media/mediaelement/HTMLMediaElement.cpp
 +++ b/dom/media/mediaelement/HTMLMediaElement.cpp
-@@ -3289,6 +3289,8 @@ void HTMLMediaElement::UpdatePreloadAction(
+@@ -3294,6 +3294,8 @@ void HTMLMediaElement::UpdatePreloadAction(
    // as we'll need it to play.
    if ((AllowedToPlay() && HasAttr(nsGkAtoms::autoplay)) || !mPaused) {
      nextAction = HTMLMediaElement::PRELOAD_ENOUGH;
@@ -22,7 +22,7 @@ index 7e0920c2bd13..0e378e5ef20b 100644
    } else {
      // Find the appropriate preload action by looking at the attribute.
      const nsAttrValue* val =
-@@ -6146,6 +6148,9 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
+@@ -6152,6 +6154,9 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
    mTags = std::move(aTags);
    mLoadedDataFired = false;
    ChangeReadyState(HAVE_METADATA);

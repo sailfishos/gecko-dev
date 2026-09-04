@@ -66,10 +66,10 @@ index 713308a31da5..2b697cf8a8d6 100644
                                          aFormat, aUsage);
  #elif defined(XP_MACOSX)
 diff --git a/dom/webgpu/ipc/WebGPUParent.cpp b/dom/webgpu/ipc/WebGPUParent.cpp
-index 3664e4bcc9a0..a15f46ff8bdc 100644
+index 8ed716c8d3e2..5066499b8918 100644
 --- a/dom/webgpu/ipc/WebGPUParent.cpp
 +++ b/dom/webgpu/ipc/WebGPUParent.cpp
-@@ -25,7 +25,7 @@
+@@ -26,7 +26,7 @@
  #  include "mozilla/webgpu/SharedTextureD3D11.h"
  #endif
  
@@ -78,7 +78,7 @@ index 3664e4bcc9a0..a15f46ff8bdc 100644
  #  include "mozilla/webgpu/SharedTextureDMABuf.h"
  #endif
  
-@@ -104,7 +104,7 @@ extern void* wgpu_server_get_shared_texture_handle(WGPUWebGPUParentPtr aParent,
+@@ -105,7 +105,7 @@ extern void* wgpu_server_get_shared_texture_handle(WGPUWebGPUParentPtr aParent,
  }
  #endif
  
@@ -87,7 +87,7 @@ index 3664e4bcc9a0..a15f46ff8bdc 100644
  extern int32_t wgpu_server_get_dma_buf_fd(WGPUWebGPUParentPtr aParent,
                                            WGPUTextureId aId) {
    auto* parent = static_cast<WebGPUParent*>(aParent);
-@@ -126,7 +126,7 @@ extern int32_t wgpu_server_get_dma_buf_fd(WGPUWebGPUParentPtr aParent,
+@@ -127,7 +127,7 @@ extern int32_t wgpu_server_get_dma_buf_fd(WGPUWebGPUParentPtr aParent,
  }
  #endif
  
@@ -96,7 +96,7 @@ index 3664e4bcc9a0..a15f46ff8bdc 100644
  extern const WGPUVkImageHandle* wgpu_server_get_vk_image_handle(
      WGPUWebGPUParentPtr aParent, WGPUTextureId aId) {
    auto* parent = static_cast<WebGPUParent*>(aParent);
-@@ -1922,7 +1922,7 @@ Maybe<ffi::WGPUFfiLUID> WebGPUParent::GetCompositorDeviceLuid() {
+@@ -1924,7 +1924,7 @@ Maybe<ffi::WGPUFfiLUID> WebGPUParent::GetCompositorDeviceLuid() {
  }
  #endif
  
@@ -132,7 +132,7 @@ index 9c05835bc8d9..0ce569e07333 100644
          "SharedTextureDMABuf.h",
      ]
 diff --git a/gfx/wgpu_bindings/Cargo.toml b/gfx/wgpu_bindings/Cargo.toml
-index b63256788630..320fe5a0ed49 100644
+index ea6d972697f0..3a631587fe1e 100644
 --- a/gfx/wgpu_bindings/Cargo.toml
 +++ b/gfx/wgpu_bindings/Cargo.toml
 @@ -13,6 +13,7 @@ publish = false
@@ -144,10 +144,10 @@ index b63256788630..320fe5a0ed49 100644
  [dependencies.wgc]
  package = "wgpu-core"
 diff --git a/gfx/wgpu_bindings/src/server.rs b/gfx/wgpu_bindings/src/server.rs
-index d4503f998b7b..612b4c443a7c 100644
+index dbf60a0cc3f5..5dd8c6f956e9 100644
 --- a/gfx/wgpu_bindings/src/server.rs
 +++ b/gfx/wgpu_bindings/src/server.rs
-@@ -1622,13 +1622,13 @@ extern "C" {
+@@ -1604,13 +1604,13 @@ extern "C" {
          parent: WebGPUParentPtr,
          id: id::TextureId,
      ) -> *mut core::ffi::c_void;
@@ -163,7 +163,7 @@ index d4503f998b7b..612b4c443a7c 100644
      fn wgpu_server_get_dma_buf_fd(parent: WebGPUParentPtr, id: id::TextureId) -> i32;
      #[cfg(target_os = "macos")]
      fn wgpu_server_get_external_io_surface_id(parent: WebGPUParentPtr, id: id::TextureId) -> u32;
-@@ -1896,7 +1896,7 @@ impl Global {
+@@ -1878,7 +1878,7 @@ impl Global {
          true
      }
  
@@ -172,7 +172,7 @@ index d4503f998b7b..612b4c443a7c 100644
      fn create_texture_with_shared_texture_dmabuf(
          &self,
          device_id: id::DeviceId,
-@@ -2272,7 +2272,7 @@ impl Global {
+@@ -2209,7 +2209,7 @@ impl Global {
                          }
                      }
  

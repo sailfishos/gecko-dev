@@ -73,7 +73,7 @@ index 2d0f0d1d9b4e..d5250268708c 100644
      this.#loadEnginesFromConfig(refinedConfig.engines, settings);
 diff --git a/toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js b/toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js
 new file mode 100644
-index 000000000000..3188859ffb1d
+index 000000000000..8cf4abf50f65
 --- /dev/null
 +++ b/toolkit/components/search/tests/xpcshell/test_embedlite_config_engines.js
 @@ -0,0 +1,35 @@
@@ -91,8 +91,8 @@ index 000000000000..3188859ffb1d
 +  updateAppInfo({
 +    name: "XULRunner",
 +    ID: "embedliteBrowser@embed.mozilla.org",
-+    version: "153.1.0",
-+    platformVersion: "153.1.0",
++    version: "153.2.0",
++    platformVersion: "153.2.0",
 +  });
 +  SearchTestUtils.setRemoteSettingsConfig(CONFIG);
 +});

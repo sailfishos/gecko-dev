@@ -133,7 +133,7 @@ index 1bd4af56f2a2..cc81530596a4 100644
  
  # Add libFuzzer configuration directives
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 722d74c6ebef..a74fd0a8b160 100644
+index 69dac4e6d808..473934ec0917 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -12578,6 +12578,19 @@

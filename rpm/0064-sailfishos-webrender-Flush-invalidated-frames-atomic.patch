@@ -9,7 +9,7 @@ Subject: [sailfishos][webrender] Flush invalidated frames atomically
  2 files changed, 41 insertions(+), 10 deletions(-)
 
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index 6c7e8df0e667..c1ac9251f410 100644
+index ff1c2beec83f..b253237ef469 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
 @@ -1818,19 +1818,22 @@ void WebRenderBridgeParent::FlushSceneBuilds() {

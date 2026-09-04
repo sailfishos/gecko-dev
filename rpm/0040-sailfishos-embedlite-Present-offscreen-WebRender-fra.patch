@@ -64,7 +64,7 @@ EmbedLite frames in order to publish the completed offscreen image.
  create mode 100644 widget/EmbedLiteCompositorWidget.h
 
 diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
-index 512d786cdafb..e5c35b563c15 100644
+index 0122df8a7f1f..6e079a4ed32a 100644
 --- a/dom/base/Document.cpp
 +++ b/dom/base/Document.cpp
 @@ -156,6 +156,8 @@
@@ -719,7 +719,7 @@ index c32ce744a2ac..67b918066c01 100644
    sInstance->mPendingCompositorBridges.AppendElement(bridge);
    return bridge.forget();
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index 512d535abf23..6c7e8df0e667 100644
+index aedd0c3605c8..ff1c2beec83f 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
 @@ -3218,6 +3218,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
@@ -1295,7 +1295,7 @@ index 392656638935..d9a5e291c6cb 100644
    void PrependSheetOfType(Origin, StyleSheet*);
    void AppendSheetOfType(Origin, StyleSheet*);
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index a74fd0a8b160..dc67d3ff60a6 100644
+index 473934ec0917..ba4708f88098 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -15108,7 +15108,7 @@
