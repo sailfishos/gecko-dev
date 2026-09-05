@@ -1,0 +1,209 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 15:59:43 +0200
+Subject: [sailfishos][webgpu] Keep DMA-BUF textures GTK-only
+
+The DMA-BUF external texture implementation depends on widget/gtk exports.
+Do not build or reference it with the Qt widget backend, and select the
+existing readback presentation path instead.
+
+Co-authored-by: Sebastian Matkovich <38816871+smatkovi@users.noreply.github.com>
+---
+ dom/webgpu/CanvasContext.cpp                  | 5 ++++-
+ dom/webgpu/SharedTexture.cpp                  | 4 ++--
+ dom/webgpu/ipc/WebGPUParent.cpp               | 8 ++++----
+ dom/webgpu/ipc/WebGPUParent.h                 | 2 +-
+ dom/webgpu/moz.build                          | 2 +-
+ gfx/wgpu_bindings/Cargo.toml                  | 1 +
+ gfx/wgpu_bindings/src/server.rs               | 8 ++++----
+ toolkit/library/rust/gkrust-features.mozbuild | 3 +++
+ toolkit/library/rust/shared/Cargo.toml        | 1 +
+ 9 files changed, 21 insertions(+), 13 deletions(-)
+
+diff --git a/dom/webgpu/CanvasContext.cpp b/dom/webgpu/CanvasContext.cpp
+index e3f2a2636b28..39458c6f0e50 100644
+--- a/dom/webgpu/CanvasContext.cpp
++++ b/dom/webgpu/CanvasContext.cpp
+@@ -142,7 +142,7 @@ void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aConfig,
+                        "WebRender is not using hardware acceleration";
+     mUseSharedTextureInSwapChain = false;
+   }
+-#elif defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#elif defined(MOZ_WIDGET_GTK)
+   // When DMABufDevice is not enabled, disable shared texture in swap chain.
+   const auto& modifiers = gfx::gfxVars::DMABufModifiersARGB();
+   if (modifiers.IsEmpty()) {
+@@ -150,6 +150,9 @@ void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aConfig,
+                        "missing GBM_FORMAT_ARGB8888 dmabuf format";
+     mUseSharedTextureInSwapChain = false;
+   }
++#elif defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++  // Other Linux widget toolkits do not build the GTK DMA-BUF backend.
++  mUseSharedTextureInSwapChain = false;
+ #endif
+ 
+   mCurrentTexture = aConfig.mDevice->InitSwapChain(
+diff --git a/dom/webgpu/SharedTexture.cpp b/dom/webgpu/SharedTexture.cpp
+index 713308a31da5..2b697cf8a8d6 100644
+--- a/dom/webgpu/SharedTexture.cpp
++++ b/dom/webgpu/SharedTexture.cpp
+@@ -10,7 +10,7 @@
+ #  include "mozilla/webgpu/SharedTextureD3D11.h"
+ #endif
+ 
+-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#ifdef MOZ_WIDGET_GTK
+ #  include "mozilla/webgpu/SharedTextureDMABuf.h"
+ #endif
+ 
+@@ -32,7 +32,7 @@ UniquePtr<SharedTexture> SharedTexture::Create(
+ #ifdef XP_WIN
+   texture = SharedTextureD3D11::Create(aParent, aDeviceId, aWidth, aHeight,
+                                        aFormat, aUsage);
+-#elif defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#elif defined(MOZ_WIDGET_GTK)
+   texture = SharedTextureDMABuf::Create(aParent, aDeviceId, aWidth, aHeight,
+                                         aFormat, aUsage);
+ #elif defined(XP_MACOSX)
+diff --git a/dom/webgpu/ipc/WebGPUParent.cpp b/dom/webgpu/ipc/WebGPUParent.cpp
+index 8ed716c8d3e2..5066499b8918 100644
+--- a/dom/webgpu/ipc/WebGPUParent.cpp
++++ b/dom/webgpu/ipc/WebGPUParent.cpp
+@@ -26,7 +26,7 @@
+ #  include "mozilla/webgpu/SharedTextureD3D11.h"
+ #endif
+ 
+-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#ifdef MOZ_WIDGET_GTK
+ #  include "mozilla/webgpu/SharedTextureDMABuf.h"
+ #endif
+ 
+@@ -105,7 +105,7 @@ extern void* wgpu_server_get_shared_texture_handle(WGPUWebGPUParentPtr aParent,
+ }
+ #endif
+ 
+-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#ifdef MOZ_WIDGET_GTK
+ extern int32_t wgpu_server_get_dma_buf_fd(WGPUWebGPUParentPtr aParent,
+                                           WGPUTextureId aId) {
+   auto* parent = static_cast<WebGPUParent*>(aParent);
+@@ -127,7 +127,7 @@ extern int32_t wgpu_server_get_dma_buf_fd(WGPUWebGPUParentPtr aParent,
+ }
+ #endif
+ 
+-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#ifdef MOZ_WIDGET_GTK
+ extern const WGPUVkImageHandle* wgpu_server_get_vk_image_handle(
+     WGPUWebGPUParentPtr aParent, WGPUTextureId aId) {
+   auto* parent = static_cast<WebGPUParent*>(aParent);
+@@ -1924,7 +1924,7 @@ Maybe<ffi::WGPUFfiLUID> WebGPUParent::GetCompositorDeviceLuid() {
+ }
+ #endif
+ 
+-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#ifdef MOZ_WIDGET_GTK
+ VkImageHandle::~VkImageHandle() {
+   if (!mParent) {
+     return;
+diff --git a/dom/webgpu/ipc/WebGPUParent.h b/dom/webgpu/ipc/WebGPUParent.h
+index 816f29ec4106..e7b5c3d9b06c 100644
+--- a/dom/webgpu/ipc/WebGPUParent.h
++++ b/dom/webgpu/ipc/WebGPUParent.h
+@@ -266,7 +266,7 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
+   std::unordered_map<RawId, RefPtr<gfx::FileHandleWrapper>> mDeviceFenceHandles;
+ };
+ 
+-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
++#ifdef MOZ_WIDGET_GTK
+ class VkImageHandle {
+  public:
+   explicit VkImageHandle(WebGPUParent* aParent,
+diff --git a/dom/webgpu/moz.build b/dom/webgpu/moz.build
+index 9c05835bc8d9..0ce569e07333 100644
+--- a/dom/webgpu/moz.build
++++ b/dom/webgpu/moz.build
+@@ -84,7 +84,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+         "SharedTextureD3D11.cpp",
+     ]
+ 
+-if CONFIG["OS_TARGET"] == "Linux":
++if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     EXPORTS.mozilla.webgpu += [
+         "SharedTextureDMABuf.h",
+     ]
+diff --git a/gfx/wgpu_bindings/Cargo.toml b/gfx/wgpu_bindings/Cargo.toml
+index ea6d972697f0..3a631587fe1e 100644
+--- a/gfx/wgpu_bindings/Cargo.toml
++++ b/gfx/wgpu_bindings/Cargo.toml
+@@ -13,6 +13,7 @@ publish = false
+ 
+ [features]
+ default = []
++dmabuf = []
+ 
+ [dependencies.wgc]
+ package = "wgpu-core"
+diff --git a/gfx/wgpu_bindings/src/server.rs b/gfx/wgpu_bindings/src/server.rs
+index dbf60a0cc3f5..5dd8c6f956e9 100644
+--- a/gfx/wgpu_bindings/src/server.rs
++++ b/gfx/wgpu_bindings/src/server.rs
+@@ -1604,13 +1604,13 @@ extern "C" {
+         parent: WebGPUParentPtr,
+         id: id::TextureId,
+     ) -> *mut core::ffi::c_void;
+-    #[cfg(target_os = "linux")]
++    #[cfg(all(target_os = "linux", feature = "dmabuf"))]
+     #[allow(improper_ctypes)] // VkImageHandle is behind a pointer but this still triggers
+     fn wgpu_server_get_vk_image_handle(
+         parent: WebGPUParentPtr,
+         texture_id: id::TextureId,
+     ) -> *const VkImageHandle;
+-    #[cfg(target_os = "linux")]
++    #[cfg(all(target_os = "linux", feature = "dmabuf"))]
+     fn wgpu_server_get_dma_buf_fd(parent: WebGPUParentPtr, id: id::TextureId) -> i32;
+     #[cfg(target_os = "macos")]
+     fn wgpu_server_get_external_io_surface_id(parent: WebGPUParentPtr, id: id::TextureId) -> u32;
+@@ -1878,7 +1878,7 @@ impl Global {
+         true
+     }
+ 
+-    #[cfg(target_os = "linux")]
++    #[cfg(all(target_os = "linux", feature = "dmabuf"))]
+     fn create_texture_with_shared_texture_dmabuf(
+         &self,
+         device_id: id::DeviceId,
+@@ -2209,7 +2209,7 @@ impl Global {
+                         }
+                     }
+ 
+-                    #[cfg(target_os = "linux")]
++                    #[cfg(all(target_os = "linux", feature = "dmabuf"))]
+                     {
+                         let is_created = self.create_texture_with_shared_texture_dmabuf(
+                             device_id,
+diff --git a/toolkit/library/rust/gkrust-features.mozbuild b/toolkit/library/rust/gkrust-features.mozbuild
+index a3f1cc357366..b4b8dbca8d51 100644
+--- a/toolkit/library/rust/gkrust-features.mozbuild
++++ b/toolkit/library/rust/gkrust-features.mozbuild
+@@ -54,6 +54,9 @@ if CONFIG["LIBFUZZER"]:
+ if CONFIG["MOZ_WEBRTC"]:
+     gkrust_features += ["webrtc"]
+ 
++if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
++    gkrust_features += ["webgpu_dmabuf"]
++
+ # We need to tell Glean it is being built with Gecko.
+ gkrust_features += ["glean_with_gecko"]
+ 
+diff --git a/toolkit/library/rust/shared/Cargo.toml b/toolkit/library/rust/shared/Cargo.toml
+index dbcd527798f6..1948d81f6552 100644
+--- a/toolkit/library/rust/shared/Cargo.toml
++++ b/toolkit/library/rust/shared/Cargo.toml
+@@ -176,6 +176,7 @@ for_xul = [
+     "rusqlite/in_gecko"
+ ]
+ webrender_debugger = ["webrender_bindings/debugger"]
++webgpu_dmabuf = ["wgpu_bindings/dmabuf"]
+ shell_windows = ["dep:shell_windows"]
+ 
+ [lib]

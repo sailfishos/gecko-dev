@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 2 Sep 2026 22:27:32 +0200
+Subject: [sailfishos][neterror] Close popup certificate errors
+
+Handle popup closure in EscapablePageParent.leaveErrorPage so all escapable
+error pages follow the same policy. When a top-level browsing context has a
+cross-group opener, dispatch DOMWindowClose; preserve the existing history
+and safe-page handling otherwise.
+---
+ toolkit/actors/NetErrorParent.sys.mjs | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/toolkit/actors/NetErrorParent.sys.mjs b/toolkit/actors/NetErrorParent.sys.mjs
+index 5bf1902ac52c..74719e3260ee 100644
+--- a/toolkit/actors/NetErrorParent.sys.mjs
++++ b/toolkit/actors/NetErrorParent.sys.mjs
+@@ -48,9 +48,22 @@ export class EscapablePageParent extends JSWindowActorParent {
+    * browses to a secure page with certificate issues and is presented with
+    * about:certerror.  The "Go Back" button should take the user to the previous
+    * or a default start page so that even when their own homepage is on a server
+-   * that has certificate errors, we can get them somewhere safe.
++   * that has certificate errors, we can get them somewhere safe.  When the
++   * error page is in a top-level popup, leaving it closes the popup instead.
+    */
+   leaveErrorPage(browser, allowGoingBack = true) {
++    if (
++      browser &&
++      !this.browsingContext.parent &&
++      this.browsingContext.top.crossGroupOpener
++    ) {
++      let win = browser.documentGlobal;
++      browser.dispatchEvent(
++        new win.CustomEvent("DOMWindowClose", { bubbles: true })
++      );
++      return;
++    }
++
+     let browserCanNavigate =
+       typeof browser?.goBack == "function" &&
+       typeof browser?.fixupAndLoadURIString == "function";

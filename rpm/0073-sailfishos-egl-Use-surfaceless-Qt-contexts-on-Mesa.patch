@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 3 Sep 2026 00:00:17 +0200
+Subject: [sailfishos][egl] Use surfaceless Qt contexts on Mesa
+
+Qt Wayland EGL displays on Mesa can expose only window configs. The generic
+headless fallback requests EGL_PBUFFER_BIT, so WebGL context creation fails
+before trying a usable context.
+
+Let WebGL explicitly opt into the existing configless surfaceless path on Qt
+non-hybris displays. Keep compositor and hybris callers on their current
+config paths so context sharing remains unchanged.
+---
+ dom/canvas/WebGLContext.cpp     |  1 +
+ gfx/gl/GLContextProviderEGL.cpp | 17 ++++++++++++++---
+ gfx/gl/GLContextTypes.h         |  3 +++
+ 3 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/dom/canvas/WebGLContext.cpp b/dom/canvas/WebGLContext.cpp
+index bc700cec265c..9d9009d1ec0c 100644
+--- a/dom/canvas/WebGLContext.cpp
++++ b/dom/canvas/WebGLContext.cpp
+@@ -271,6 +271,7 @@ bool WebGLContext::CreateAndInitGL(
+   }
+ 
+   auto flags = gl::CreateContextFlags::PREFER_ROBUSTNESS;
++  flags |= gl::CreateContextFlags::ALLOW_SURFACELESS;
+ 
+   if (StaticPrefs::webgl_gl_khr_no_error()) {
+     flags |= gl::CreateContextFlags::NO_VALIDATION;
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index 9ef1fc1caa6b..e8d4e17539d7 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -1312,11 +1312,22 @@ RefPtr<GLContextEGL> GLContextEGL::CreateWithoutSurfaceForApi(
+     const bool useGles, nsACString* const out_failureId) {
+   const bool isBorrowed =
+       egl->mOwnership == EglDisplay::Ownership::Borrowed;
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
++#  ifdef MOZ_WIDGET_QT
++  const bool allowSurfaceless =
++      bool(desc.flags & CreateContextFlags::ALLOW_SURFACELESS) && useGles &&
++      !IsHybrisDisplay(*egl->mLib, egl->mDisplay);
++#  else
++  const bool allowSurfaceless = true;
++#  endif
+   // First try creating a context with no config and no surface, this is what
+   // we really want, and seems to be the only way to make selecting software
+-  // Mesa init properly when it's not the first device.
+-  if (egl->IsExtensionSupported(EGLExtension::KHR_no_config_context) &&
++  // Mesa init properly when it's not the first device. Qt Wayland displays
++  // can also expose window-only configs, making a pbuffer fallback impossible.
++  // Restrict the Qt path to opted-in GLES callers so compositor contexts keep
++  // their existing config and sharing behavior.
++  if (allowSurfaceless &&
++      egl->IsExtensionSupported(EGLExtension::KHR_no_config_context) &&
+       egl->IsExtensionSupported(EGLExtension::KHR_surfaceless_context)) {
+     // These extensions have been supported by mesa and nvidia drivers
+     // since 2014 or earlier, this is the preferred code path
+diff --git a/gfx/gl/GLContextTypes.h b/gfx/gl/GLContextTypes.h
+index 31cc07e6332b..e43092b2b3cf 100644
+--- a/gfx/gl/GLContextTypes.h
++++ b/gfx/gl/GLContextTypes.h
+@@ -36,6 +36,9 @@ enum class CreateContextFlags : uint16_t {
+   PREFER_MULTITHREADED = 1 << 9,
+ 
+   FORBID_HARDWARE = 1 << 10,
++
++  // Permit a configless surfaceless EGL context where supported.
++  ALLOW_SURFACELESS = 1 << 11,
+ };
+ MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(CreateContextFlags)
+ 

@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 17:30:12 +0200
+Subject: [sailfishos][build] Keep desktop services GTK-only on Qt
+
+UPowerClient and DBusService depend on GTK-specific helpers and headers while
+the Sailfish Qt build still enables general DBus support. Keep both desktop
+integration paths GTK-only and use the existing battery fallback on Qt.
+---
+ hal/moz.build               | 4 ++--
+ toolkit/xre/nsAppRunner.cpp | 6 +++---
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/hal/moz.build b/hal/moz.build
+index bb486ec1e411..42ca0fecc66a 100644
+--- a/hal/moz.build
++++ b/hal/moz.build
+@@ -57,7 +57,7 @@ elif CONFIG["OS_TARGET"] == "Linux":
+         "fallback/FallbackVibration.cpp",
+         "linux/LinuxProcessPriority.cpp",
+     ]
+-    if CONFIG["MOZ_ENABLE_DBUS"]:
++    if CONFIG["MOZ_ENABLE_DBUS"] and CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+         UNIFIED_SOURCES += [
+             "linux/UPowerClient.cpp",
+         ]
+@@ -93,7 +93,7 @@ elif CONFIG["OS_TARGET"] in ("OpenBSD", "NetBSD", "FreeBSD", "DragonFly"):
+         "fallback/FallbackSensor.cpp",
+         "fallback/FallbackVibration.cpp",
+     ]
+-    if CONFIG["MOZ_ENABLE_DBUS"]:
++    if CONFIG["MOZ_ENABLE_DBUS"] and CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+         UNIFIED_SOURCES += [
+             "linux/UPowerClient.cpp",
+         ]
+diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
+index 4bacb86e5f8b..ea286e8ffa4c 100644
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -270,7 +270,7 @@
+ #ifdef MOZ_WIDGET_GTK
+ #  include "nsAppShell.h"
+ #endif
+-#ifdef MOZ_ENABLE_DBUS
++#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WIDGET_GTK)
+ #  include "DBusService.h"
+ #endif
+ 
+@@ -2241,7 +2241,7 @@ static void DumpHelp() {
+   printf("  --headless         Run without a GUI.\n");
+ #endif
+ 
+-#if defined(MOZ_ENABLE_DBUS)
++#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WIDGET_GTK)
+   printf(
+       "  --dbus-service <launcher>  Run as DBus service for "
+       "org.freedesktop.Application and\n"
+@@ -4796,7 +4796,7 @@ int XREMain::XRE_mainInit(bool* aExitFlag,
+     return 0;
+   }
+ 
+-#ifdef MOZ_ENABLE_DBUS
++#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WIDGET_GTK)
+   const char* dbusServiceLauncher = nullptr;
+   ar = CheckArg("dbus-service", &dbusServiceLauncher, CheckArgFlag::None);
+   if (ar == ARG_BAD) {

@@ -8,9 +8,6 @@
 NS_IMPL_ISUPPORTS(nsSound, nsISound)
 
 NS_IMETHODIMP
-nsSound::Play(nsIURL* aURL) { return NS_ERROR_NOT_IMPLEMENTED; }
-
-NS_IMETHODIMP
 nsSound::Beep() { return NS_ERROR_NOT_IMPLEMENTED; }
 
 NS_IMETHODIMP

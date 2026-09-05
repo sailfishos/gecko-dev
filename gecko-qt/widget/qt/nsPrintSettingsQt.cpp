@@ -161,8 +161,7 @@ NS_IMETHODIMP
 nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
 {
     nsCOMPtr<nsIFile> file;
-    nsresult rv = NS_NewLocalFile(aToFileName, true,
-                                getter_AddRefs(file));
+    nsresult rv = NS_NewLocalFile(aToFileName, getter_AddRefs(file));
     NS_ENSURE_SUCCESS(rv, rv);
 
     NS_ConvertUTF16toUTF8 fileNameCStr(aToFileName);

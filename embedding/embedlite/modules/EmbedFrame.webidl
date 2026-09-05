@@ -7,5 +7,5 @@
 [ChromeOnly, Exposed=(Window)]
 interface EmbedFrame : EventTarget {
   readonly attribute WindowProxy? contentWindow;
-  readonly attribute ContentFrameMessageManager messageManager;
+  readonly attribute ChromeMessageSender messageManager;
 };

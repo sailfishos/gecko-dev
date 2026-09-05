@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 11 Aug 2026 23:32:19 +0200
+Subject: [sailfishos][egl] Manage platform frame consumer fences
+
+---
+ gfx/gl/SharedSurfaceEGL.cpp | 40 +++++++++++++++++++++++++++++++++++++
+ gfx/gl/SharedSurfaceEGL.h   | 10 ++++++++++
+ 2 files changed, 50 insertions(+)
+
+diff --git a/gfx/gl/SharedSurfaceEGL.cpp b/gfx/gl/SharedSurfaceEGL.cpp
+index 2fb27052823a..66466364a1db 100644
+--- a/gfx/gl/SharedSurfaceEGL.cpp
++++ b/gfx/gl/SharedSurfaceEGL.cpp
+@@ -148,6 +148,46 @@ bool SharedSurface_EGLImage::IsBufferAvailable() const {
+          status == LOCAL_EGL_SIGNALED;
+ }
+ 
++bool SharedSurface_EGLImage::SupportsConsumerFence() const {
++  const MutexAutoLock lock(mMutex);
++  const auto display = mEglDisplay.lock();
++  return display &&
++         display->IsExtensionSupported(EGLExtension::KHR_fence_sync);
++}
++
++ConsumerFenceStatus SharedSurface_EGLImage::GetConsumerFenceStatus(
++    const EGLSync sync) const {
++  if (!sync) {
++    return ConsumerFenceStatus::Invalid;
++  }
++
++  const MutexAutoLock lock(mMutex);
++  const auto display = mEglDisplay.lock();
++  if (!display ||
++      !display->IsExtensionSupported(EGLExtension::KHR_fence_sync)) {
++    return ConsumerFenceStatus::Invalid;
++  }
++
++  EGLint status = LOCAL_EGL_UNSIGNALED;
++  if (!display->fGetSyncAttrib(sync, LOCAL_EGL_SYNC_STATUS, &status)) {
++    return ConsumerFenceStatus::Invalid;
++  }
++  return status == LOCAL_EGL_SIGNALED ? ConsumerFenceStatus::Signaled
++                                      : ConsumerFenceStatus::Pending;
++}
++
++bool SharedSurface_EGLImage::DestroyConsumerFence(const EGLSync sync) {
++  if (!sync) {
++    return false;
++  }
++
++  const MutexAutoLock lock(mMutex);
++  const auto display = mEglDisplay.lock();
++  return display &&
++         display->IsExtensionSupported(EGLExtension::KHR_fence_sync) &&
++         display->fDestroySync(sync);
++}
++
+ Maybe<layers::SurfaceDescriptor> SharedSurface_EGLImage::ToSurfaceDescriptor() {
+   return Some(layers::EGLImageDescriptor((uintptr_t)mImage, (uintptr_t)mSync,
+                                          mDesc.size, true));
+diff --git a/gfx/gl/SharedSurfaceEGL.h b/gfx/gl/SharedSurfaceEGL.h
+index f496eae028ef..c39b3c30aa2e 100644
+--- a/gfx/gl/SharedSurfaceEGL.h
++++ b/gfx/gl/SharedSurfaceEGL.h
+@@ -24,6 +24,12 @@ class GLLibraryEGL;
+ // -
+ // EGLImage
+ 
++enum class ConsumerFenceStatus : uint8_t {
++  Invalid,
++  Pending,
++  Signaled,
++};
++
+ class SharedSurface_EGLImage final : public SharedSurface {
+   mutable Mutex mMutex MOZ_UNANNOTATED;
+   EGLSync mSync = nullptr;
+@@ -58,6 +64,10 @@ class SharedSurface_EGLImage final : public SharedSurface {
+ 
+   virtual bool IsBufferAvailable() const override;
+ 
++  bool SupportsConsumerFence() const;
++  ConsumerFenceStatus GetConsumerFenceStatus(EGLSync) const;
++  bool DestroyConsumerFence(EGLSync);
++
+   Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() override;
+ };
+ 

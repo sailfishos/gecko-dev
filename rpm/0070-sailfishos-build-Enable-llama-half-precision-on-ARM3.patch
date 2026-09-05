@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 26 Aug 2026 00:14:22 +0200
+Subject: [sailfishos][build] Enable llama half precision on ARM32
+
+GCC only exposes __fp16 on 32-bit Arm when a half-precision format is
+selected. Mirror llama.cpp's CMake configuration in its Gecko
+moz.build integration.
+---
+ third_party/llama.cpp/moz.build | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/third_party/llama.cpp/moz.build b/third_party/llama.cpp/moz.build
+index 4799456eb625..c71ab026f74b 100644
+--- a/third_party/llama.cpp/moz.build
++++ b/third_party/llama.cpp/moz.build
+@@ -46,6 +46,12 @@ elif CONFIG['TARGET_CPU'] == 'aarch64':
+     SOURCES += files['ARM64_SOURCES']
+ elif CONFIG['TARGET_CPU'] == 'arm':
+     SOURCES += files['ARM_SOURCES']
++
++    # GCC requires an explicit half-precision format before it exposes
++    # __fp16 on 32-bit Arm. Keep this in sync with llama.cpp's CMake build.
++    if CONFIG['CC_TYPE'] == 'gcc':
++        CFLAGS += ['-mfp16-format=ieee']
++        CXXFLAGS += ['-mfp16-format=ieee']
+ else:
+     DEFINES["GGML_CPU_GENERIC"] = 1
+ 

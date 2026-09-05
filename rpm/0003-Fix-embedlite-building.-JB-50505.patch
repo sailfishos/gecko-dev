@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
 Date: Wed, 9 Aug 2023 23:30:20 +0100
-Subject: [PATCH 03/67] Fix embedlite building. JB#50505
+Subject: Fix embedlite building. JB#50505
 
 Updates the build configuration for embedlite.
 
@@ -12,28 +12,15 @@ Adds the --enable-dconf flag back to allow the build to continue.
 
 Co-authored-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- build/moz.configure/old.configure | 1 +
- toolkit/moz.configure             | 8 ++++++++
- 2 files changed, 9 insertions(+)
+ toolkit/moz.configure | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
 
-diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
-index bd777622750d..b6392e7d3846 100644
---- a/build/moz.configure/old.configure
-+++ b/build/moz.configure/old.configure
-@@ -91,6 +91,7 @@ def old_configure_options(*options):
- @old_configure_options(
-     "--cache-file",
-     "--datadir",
-+    "--enable-dconf",
-     "--enable-official-branding",
-     "--includedir",
-     "--libdir",
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index 7ce37a18b915..e8438f80ff0d 100644
+index 9f47a04e25be..d057ce9c8e34 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
-@@ -2840,6 +2840,14 @@ set_config("MOZ_OXIDIZED_BREAKPAD", True, when=oxidized_breakpad)
- set_define("MOZ_OXIDIZED_BREAKPAD", True, when=oxidized_breakpad)
+@@ -3480,6 +3480,14 @@ option(env="MOZ_CRASHREPORTER_MOCK", help="Mock the crashreporter to test native
+ set_config("MOZ_CRASHREPORTER_MOCK", True, when="MOZ_CRASHREPORTER_MOCK")
  
  
 +# Embedlite
@@ -47,3 +34,26 @@ index 7ce37a18b915..e8438f80ff0d 100644
  # Wine
  # ==============================================================
  @depends(target, host)
+@@ -3600,6 +3608,22 @@ with only_when(toolkit_gtk | toolkit_qt):
+         set_define("MOZ_ENABLE_DBUS", True)
+ 
+ 
++# dconf
++# ==============================================================
++with only_when(toolkit_gtk | toolkit_qt):
++    option("--disable-dconf", help="Disable dconf support", when=use_pkg_config)
++
++    @depends("--enable-dconf", when=use_pkg_config)
++    def enable_dconf_option(enable_dconf):
++        return enable_dconf
++
++    with only_when(enable_dconf_option):
++        pkg_check_modules("MOZ_DCONF", "dconf")
++
++        set_config("MOZ_ENABLE_DCONF", True)
++        set_define("MOZ_ENABLE_DCONF", True)
++
++
+ # Necko's wifi scanner
+ # ==============================================================
+ @depends(target)

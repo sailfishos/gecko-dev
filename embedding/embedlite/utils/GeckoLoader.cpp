@@ -10,7 +10,6 @@
 #include "mozilla/AppShutdown.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
-#include "mozilla/Unused.h"
 
 #include <stdio.h>
 #include "nscore.h"
@@ -105,13 +104,11 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   IOInterposer::Init();
 #endif
 
-  // Android FF is using baseprofiler, I'm not sure if we'd benefit of it.
-  // This call must happen before any other profiler calls and main thread
+  // The Gecko profiler is unconditional since MOZ_GECKO_PROFILER was removed.
+  // This call must happen before any other profiler calls and the main thread
   // must be set. See GeckoProfiler.h.
-#ifdef MOZ_GECKO_PROFILER
   char aLocal;
   profiler_init(&aLocal);
-#endif
 
   const char* greHome = getenv("GRE_HOME");
   if (!greHome) {
@@ -170,8 +167,8 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 #endif
       }
       LOGF("Creating profile in:%s\n", pr.get());
-      rv = NS_NewNativeLocalFile(pr, PR_FALSE,
-                                 getter_AddRefs(kDirectoryProvider.sProfileDir));
+      rv = NS_NewNativeLocalFile(
+          pr, getter_AddRefs(kDirectoryProvider.sProfileDir));
       if (NS_FAILED(rv)) {
         LOGE("NS_NewNativeLocalFile failed.");
         return false;
@@ -195,7 +192,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     bool dirExists = true;
     rv = kDirectoryProvider.sProfileDir->Exists(&dirExists);
     if (!dirExists) {
-      mozilla::Unused << kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+      (void) kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
     }
 
     // Lock profile directory
@@ -218,7 +215,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 #ifdef XP_WIN
   greHomeCSTR.ReplaceChar('/', '\\');
 #endif
-  rv = NS_NewNativeLocalFile(greHomeCSTR, PR_FALSE,
+  rv = NS_NewNativeLocalFile(greHomeCSTR,
                              getter_AddRefs(kDirectoryProvider.sGREDir));
 
   // xul application info component defined in embedding/embedlite/components/components.conf
@@ -234,6 +231,16 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   mozilla::Preferences::InitializeUserPrefs();
   mozilla::Preferences::FinishInitializingUserPrefs();
 
+  nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
+  static const char16_t kStartup[] = {'s', 't', 'a', 'r',
+                                      't', 'u', 'p', '\0'};
+
+  // QuotaManager registers its observer during XPCOM initialization. Notify it
+  // before loading EmbedLite services, whose module imports can open IndexedDB.
+  if (obsSvc) {
+    obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
+  }
+
   // EmbedLite initializes XPCOM directly, so start only its own services here.
   // Gecko's app-startup category also contains toolkit services that expect
   // the full XRE_main profile startup sequence. Existing EmbedLite services
@@ -241,16 +248,9 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   NS_CreateServicesFromCategory("embedlite-startup", nullptr,
                                 "app-startup", nullptr);
 
-  // XRE emits these after app-startup services are registered and profile prefs
-  // are ready. EmbedLite bypasses that startup path, but profile-aware services
-  // such as the ServiceWorker registrar, remote worker launcher, quota manager,
-  // and EmbedLite JS components still wait for the profile notifications before
-  // becoming usable.
-  nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
+  // Startup services register their profile-aware observers above, so complete
+  // profile initialization after creating them.
   if (obsSvc) {
-    static const char16_t kStartup[] = {'s', 't', 'a', 'r',
-                                        't', 'u', 'p', '\0'};
-    obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
     obsSvc->NotifyObservers(nullptr, "profile-after-change", kStartup);
   }
 
@@ -288,10 +288,8 @@ GeckoLoader::TermEmbedding()
 
   NS_ShutdownXPCOM(nullptr);
 
-#ifdef MOZ_GECKO_PROFILER
   // This must precede NS_LogTerm().
   profiler_shutdown();
-#endif
 
   NS_LogTerm();
 

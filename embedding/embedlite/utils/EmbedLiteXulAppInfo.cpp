@@ -13,13 +13,13 @@
 #include "mozilla/GenericFactory.h"
 #include "mozilla/ModuleUtils.h"
 #include "nsComponentManagerUtils.h"
+#include "nsAppRunner.h"
 #include "nsXULAppAPI.h"
 #include "nsString.h"
-#include "EmbedLiteAppThreadChild.h"
-
+#include "mozilla/HelperMacros.h"
 #include "application.ini.h"
 #include "mozilla/LookAndFeel.h"
-#include "mozilla/Unused.h"
+#include "mozilla/PreferenceSheet.h"
 
 #if defined(ACCESSIBILITY)
 #include "nsAccessibilityService.h"
@@ -35,6 +35,7 @@
 using namespace mozilla::embedlite;
 using mozilla::ColorScheme;
 using mozilla::LookAndFeel;
+using mozilla::PreferenceSheet;
 
 #ifndef MOZ_DISTRIBUTION_ID
 #define MOZ_DISTRIBUTION_ID ""
@@ -85,6 +86,16 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetName(nsACString& aName)
 {
   aName.Assign("EmbedLiteApp");
   return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetRemotingName(nsACString& aRemotingName)
+{
+  nsCOMPtr<nsIXULAppInfo> appInfo;
+  nsresult rv = mozilla::AppInfoConstructor(
+      NS_GET_IID(nsIXULAppInfo), getter_AddRefs(appInfo));
+  NS_ENSURE_SUCCESS(rv, rv);
+  return appInfo->GetRemotingName(aRemotingName);
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetUAName(nsACString& aUAName)
@@ -139,6 +150,37 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetWidgetToolkit(nsACString& aWidgetToolkit)
   return NS_OK;
 }
 
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetNativeMenubar(bool* aResult)
+{
+  *aResult = !!LookAndFeel::GetInt(LookAndFeel::IntID::NativeMenubar);
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsWayland(bool* aResult)
+{
+  *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetSessionStorePlatformCollection(
+    bool* aResult)
+{
+  *aResult = mozilla::SessionStorePlatformCollection();
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetCaretBlinkCount(int32_t* aResult)
+{
+  *aResult = LookAndFeel::CaretBlinkCount();
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetCaretBlinkTime(int32_t* aResult)
+{
+  *aResult = LookAndFeel::CaretBlinkTime();
+  return NS_OK;
+}
+
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
 {
   static const char* embedSafeModeEnv = PR_GetEnv("EMBED_SAFEMODE");
@@ -172,25 +214,29 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kSessionStatus(
 /* readonly attribute boolean fissionAutostart; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionAutostart(bool *aFissionAutostart)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  *aFissionAutostart = mozilla::FissionAutostart();
+  return NS_OK;
 }
 
 /* readonly attribute nsIXULRuntime_FissionDecisionStatus fissionDecisionStatus; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatus(nsIXULRuntime::FissionDecisionStatus *aFissionDecisionStatus)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIXULRuntime> runtime;
+  nsresult rv = mozilla::AppInfoConstructor(
+      NS_GET_IID(nsIXULRuntime), getter_AddRefs(runtime));
+  NS_ENSURE_SUCCESS(rv, rv);
+  return runtime->GetFissionDecisionStatus(aFissionDecisionStatus);
 }
 
 /* readonly attribute ACString fissionDecisionStatusString; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatusString(nsACString& aFissionDecisionStatusString)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-/* readonly attribute boolean sessionHistoryInParent; */
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetSessionHistoryInParent(bool *aSessionHistoryInParent)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIXULRuntime> runtime;
+  nsresult rv = mozilla::AppInfoConstructor(
+      NS_GET_IID(nsIXULRuntime), getter_AddRefs(runtime));
+  NS_ENSURE_SUCCESS(rv, rv);
+  return runtime->GetFissionDecisionStatusString(
+      aFissionDecisionStatusString);
 }
 
 /* readonly attribute AString processStartupShortcut; */
@@ -215,9 +261,9 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::InvalidateCachesOnRestart()
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP EmbedLiteXulAppInfo::EnsureContentProcess()
+NS_IMETHODIMP EmbedLiteXulAppInfo::MarkProfileEncryptedDatabases()
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return mozilla::MarkProfileEncryptedDatabases();
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetReplacedLockTime(PRTime* aReplacedLockTime)
@@ -272,7 +318,7 @@ EmbedLiteXulAppInfo::GetRemoteType(nsACString& aRemoteType) {
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
 {
-  *aResult = false;
+  *aResult = mozilla::BrowserTabsRemoteAutostart();
   return NS_OK;
 }
 
@@ -319,15 +365,6 @@ EmbedLiteXulAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetShouldBlockIncompatJaws(bool* aResult) {
-  *aResult = false;
-#if defined(ACCESSIBILITY) && defined(XP_WIN)
-  *aResult = mozilla::a11y::Compatibility::IsOldJAWS();
-#endif
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetIs64Bit(bool* aResult)
 {
 #ifdef HAVE_64BIT_BUILD
@@ -367,7 +404,7 @@ EmbedLiteXulAppInfo::GetRestartedByOS(bool *aResult)
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetChromeColorSchemeIsDark(bool* aResult)
 {
-  *aResult = LookAndFeel::ColorSchemeForChrome() == ColorScheme::Dark;
+  *aResult = PreferenceSheet::ColorSchemeForChrome() == ColorScheme::Dark;
   return NS_OK;
 }
 
@@ -375,7 +412,7 @@ NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetContentThemeDerivedColorSchemeIsDark(bool* aResult)
 {
   *aResult =
-      LookAndFeel::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
+      PreferenceSheet::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
   return NS_OK;
 }
 

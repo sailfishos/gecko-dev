@@ -8,8 +8,8 @@
 
 #include "nsCOMPtr.h"
 #include "mozilla/DOMEventTargetHelper.h"
-#include "mozilla/dom/ContentFrameMessageManager.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/ChromeMessageSender.h"
 
 namespace mozilla {
 namespace dom {
@@ -25,10 +25,10 @@ public:
   EmbedFrame();
 
   Nullable<WindowProxyHolder> GetContentWindow();
-  already_AddRefed<mozilla::dom::ContentFrameMessageManager> MessageManager();
+  already_AddRefed<mozilla::dom::ChromeMessageSender> MessageManager();
 
   RefPtr<mozilla::dom::BrowsingContext> mWindow;
-  RefPtr<mozilla::dom::ContentFrameMessageManager> mMessageManager;
+  RefPtr<mozilla::dom::ChromeMessageSender> mMessageManager;
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;

@@ -21,10 +21,14 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(EmbedFrame)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(EmbedFrame,
                                                 mozilla::DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindow)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mMessageManager)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(EmbedFrame,
                                                   mozilla::DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindow)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMessageManager)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(EmbedFrame)
@@ -42,9 +46,9 @@ Nullable<WindowProxyHolder> EmbedFrame::GetContentWindow()
   }
 }
 
-already_AddRefed<mozilla::dom::ContentFrameMessageManager> EmbedFrame::MessageManager()
+already_AddRefed<mozilla::dom::ChromeMessageSender> EmbedFrame::MessageManager()
 {
-    RefPtr<mozilla::dom::ContentFrameMessageManager> mm = mMessageManager;
+    RefPtr<mozilla::dom::ChromeMessageSender> mm = mMessageManager;
     return mm.forget();
 };
 

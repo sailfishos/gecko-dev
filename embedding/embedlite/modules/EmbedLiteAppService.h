@@ -8,6 +8,7 @@
 #define EmbedLiteAppListener_H_
 
 #include "nsWeakReference.h"
+#include "EmbedLiteChromeEndpointIds.h"
 #include "nsIObserver.h"
 #include "nsIEmbedAppService.h"
 #include "nsClassHashtable.h"
@@ -16,8 +17,12 @@
 #include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
 
 class JSContext;
+class mozIDOMWindowProxy;
+namespace mozilla::dom { class BrowsingContext; }
+namespace mozilla::embedlite { class EmbedLiteChromeSessionChild; }
 class EmbedLiteAppService : public nsIObserver,
-                            public nsIEmbedAppService
+                            public nsIEmbedAppService,
+                            public nsIEmbedChromeAppService
 {
 public:
   EmbedLiteAppService();
@@ -25,10 +30,24 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
   NS_DECL_NSIEMBEDAPPSERVICE
+  NS_DECL_NSIEMBEDCHROMEAPPSERVICE
 
-  void RegisterView(uint32_t aId);
-  void UnregisterView(uint32_t aId);
   void HandleAsyncMessage(const char* aMessage, const nsString& aData);
+  uint32_t RegisterChromeTab(
+    mozilla::dom::BrowsingContext* aBrowsingContext,
+    mozilla::embedlite::EmbedLiteChromeSessionChild* aSession,
+    uint64_t aTabId);
+  bool UpdateChromeTabBrowsingContext(
+    uint32_t aEndpointId,
+    mozilla::dom::BrowsingContext* aBrowsingContext);
+  void UnregisterChromeTab(uint32_t aEndpointId);
+  void RegisterChromeWindow(
+    uint32_t aWindowId,
+    mozIDOMWindowProxy* aWindow,
+    mozilla::embedlite::EmbedLiteChromeSessionChild* aSession);
+  void UnregisterChromeWindow(
+    uint32_t aWindowId, mozIDOMWindowProxy* aWindow,
+    mozilla::embedlite::EmbedLiteChromeSessionChild* aSession);
   static EmbedLiteAppService* AppService();
 
 protected:
@@ -36,8 +55,18 @@ protected:
 
 private:
   friend class EmbedLiteJSON;
-  std::map<uint64_t, uint32_t> mIDMap;
-  std::map<uint64_t, uint32_t> mBrowserIDMap;
+  struct ChromeEndpoint {
+    mozilla::embedlite::EmbedLiteChromeSessionChild* session;
+    uint64_t tabId;
+  };
+  std::map<uint32_t, ChromeEndpoint> mChromeEndpoints;
+  mozilla::embedlite::EmbedLiteChromeEndpointIds mChromeEndpointIds;
+  std::map<uint64_t,
+           mozilla::embedlite::EmbedLiteChromeSessionChild*>
+    mChromeWindows;
+  std::map<uint32_t,
+           mozilla::embedlite::EmbedLiteChromeSessionChild*>
+    mChromeHostedWindows;
   typedef nsClassHashtable<nsCStringHashKey, nsTArray<nsCOMPtr<nsIEmbedMessageListener> > > MsgListenersArray;
   MsgListenersArray mMessageListeners;
   bool mHandlingMessages;

@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 13:49:35 +0200
+Subject: [sailfishos][media] Keep PipeWire integration GTK-only
+
+Qt builds can enable PipeWire and D-Bus, but the camera portal,
+AsyncDBus helper and PipeWire preferences are provided only by the GTK
+widget backend. Keep those paths GTK-only so Qt uses the existing V4L2
+fallback.
+---
+ .../systemservices/video_engine/video_capture_factory.cc  | 8 +++++---
+ dom/media/webrtc/MediaEngineWebRTC.cpp                    | 4 ++--
+ 2 files changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/dom/media/systemservices/video_engine/video_capture_factory.cc b/dom/media/systemservices/video_engine/video_capture_factory.cc
+index db8fc17da86a..4a4cb4b0cfcf 100644
+--- a/dom/media/systemservices/video_engine/video_capture_factory.cc
++++ b/dom/media/systemservices/video_engine/video_capture_factory.cc
+@@ -18,7 +18,8 @@
+ #  include "video_engine/placeholder_device_info.h"
+ #endif
+ 
+-#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS)
++#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS) && \
++    defined(MOZ_WIDGET_GTK)
+ #  include "mozilla/widget/AsyncDBus.h"
+ #endif
+ 
+@@ -33,7 +34,7 @@ VideoCaptureFactory::VideoCaptureFactory() {
+   // enabled.
+   mVideoCaptureOptions->set_allow_v4l2(true);
+   bool allowPipeWire = false;
+-#  if defined(WEBRTC_USE_PIPEWIRE)
++#  if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_WIDGET_GTK)
+   allowPipeWire =
+       mozilla::StaticPrefs::media_webrtc_camera_allow_pipewire_AtStartup();
+   mVideoCaptureOptions->set_allow_pipewire(allowPipeWire);
+@@ -168,7 +169,8 @@ auto VideoCaptureFactory::InitCameraBackend()
+ 
+ auto VideoCaptureFactory::HasCameraDevice()
+     -> RefPtr<VideoCaptureFactory::HasCameraDevicePromise> {
+-#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS)
++#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS) && \
++    defined(MOZ_WIDGET_GTK)
+   if (mVideoCaptureOptions && mVideoCaptureOptions->allow_pipewire()) {
+     return widget::CreateDBusProxyForBus(
+                G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE,
+diff --git a/dom/media/webrtc/MediaEngineWebRTC.cpp b/dom/media/webrtc/MediaEngineWebRTC.cpp
+index aeeada759fd3..e89c3a9be5c7 100644
+--- a/dom/media/webrtc/MediaEngineWebRTC.cpp
++++ b/dom/media/webrtc/MediaEngineWebRTC.cpp
+@@ -11,7 +11,7 @@
+ #include "mozilla/Logging.h"
+ 
+ // Pipewire detection support
+-#if defined(WEBRTC_USE_PIPEWIRE)
++#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_WIDGET_GTK)
+ #  include "modules/desktop_capture/desktop_capturer.h"
+ #  include "mozilla/StaticPrefs_media.h"
+ #endif
+@@ -66,7 +66,7 @@ void MediaEngineWebRTC::EnumerateVideoDevices(
+                      aMediaSource == MediaSourceEnum::Screen ||
+                      aMediaSource == MediaSourceEnum::Window;
+   (void)desktopKind;  // Suppress "unused variable" on Windows and Android.
+-#if defined(WEBRTC_USE_PIPEWIRE)
++#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_WIDGET_GTK)
+   bool canRequestOsLevelPrompt =
+       mozilla::StaticPrefs::media_webrtc_capture_allow_pipewire() &&
+       webrtc::DesktopCapturer::IsRunningUnderWayland() && desktopKind;

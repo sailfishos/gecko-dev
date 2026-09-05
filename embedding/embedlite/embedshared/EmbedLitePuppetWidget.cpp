@@ -12,6 +12,7 @@
 #include "gfxPlatform.h"
 
 #include "EmbedLitePuppetWidget.h"
+#include "nsWindow.h"
 #include "nsIWidgetListener.h"
 
 #include "mozilla/Preferences.h"
@@ -22,10 +23,7 @@
 #endif
 
 #include "EmbedLiteApp.h"
-#include "mozilla/Unused.h"
 #include "mozilla/BasicEvents.h"
-
-#include <sys/syscall.h>
 
 using namespace mozilla::widget;
 
@@ -35,20 +33,14 @@ namespace embedlite {
 NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, PuppetWidgetBase,
                             nsISupportsWeakReference)
 
-static bool
-IsPopup(const widget::InitData* aInitData)
-{
-  return aInitData && aInitData->mWindowType == widget::WindowType::Popup;
-}
-
-EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* view)
+EmbedLitePuppetWidget::EmbedLitePuppetWidget()
   : PuppetWidgetBase()
-  , mView(view)
   , mIMEComposing(false)
   , mDPI(-1.0)
 {
+  mWidgetType = WidgetType::Puppet;
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
-  LOGT("Puppet: %p, view: %p", this, mView);
+  LOGT("Puppet: %p", this);
 }
 
 EmbedLitePuppetWidget::~EmbedLitePuppetWidget()
@@ -63,25 +55,64 @@ const char *EmbedLitePuppetWidget::Type() const
 }
 
 already_AddRefed<nsIWidget>
-EmbedLitePuppetWidget::CreateChild(const LayoutDeviceIntRect &aRect,
-                                   widget::InitData* aInitData,
-                                   bool              aForceUseIWidgetParent)
+EmbedLitePuppetWidget::CreateForChromeHost(nsIWidget* aHost)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aHost);
+
+  RefPtr<EmbedLitePuppetWidget> widget =
+    new EmbedLitePuppetWidget();
+  widget->mPendingChromeHost = aHost;
+  nsCOMPtr<nsIWidget> result = widget.forget();
+  return result.forget();
+}
+
+nsresult
+EmbedLitePuppetWidget::Create(nsIWidget* aParent,
+                              const LayoutDeviceIntRect& aRect,
+                              const widget::InitData& aInitData)
+{
+  nsCOMPtr<nsIWidget> chromeHost = mPendingChromeHost;
+  mPendingChromeHost = nullptr;
+  const bool chromeHosted = !!chromeHost;
+
+  if (chromeHost) {
+    if (aParent ||
+        aInitData.mWindowType == widget::WindowType::Popup) {
+      MOZ_ASSERT_UNREACHABLE(
+        "A hosted chrome window must be a parentless top-level widget");
+      return NS_ERROR_INVALID_ARG;
+    }
+    aParent = chromeHost;
+  }
+  nsresult rv = PuppetWidgetBase::Create(aParent, aRect, aInitData);
+  if (NS_SUCCEEDED(rv) && chromeHosted) {
+    // The host is already visible, but AppWindow still needs its normal
+    // hidden-to-visible transition to invalidate and paint the chrome.
+    mVisible = false;
+    static_cast<nsWindow*>(chromeHost.get())->AttachChromeHostedWidget(this);
+  }
+  return rv;
+}
+
+already_AddRefed<nsIWidget>
+EmbedLitePuppetWidget::AllocateChildPuppetWidget(const widget::InitData&)
 {
   if (Destroyed()) {
     return nullptr;
   }
-
-  LOGT();
-  bool isPopup = IsPopup(aInitData);
-  nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget(nullptr);
-  nsresult rv = widget->Create(isPopup ? nullptr : this, nullptr, aRect, aInitData);
-  return NS_FAILED(rv) ? nullptr : widget.forget();
+  nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget();
+  return widget.forget();
 }
 
 void EmbedLitePuppetWidget::Destroy()
 {
+  RefPtr<EmbedLitePuppetWidget> self(this);
+  RefPtr<nsWindow> chromeHost = dynamic_cast<nsWindow*>(GetParent());
+  if (chromeHost) {
+    chromeHost->DetachChromeHostedWidget(this);
+  }
   PuppetWidgetBase::Destroy();
-  mView = nullptr;
 }
 
 void
@@ -93,12 +124,6 @@ EmbedLitePuppetWidget::Show(bool aState)
 
   PuppetWidgetBase::Show(aState);
 
-  // Only propagate visibility changes for widgets backing EmbedLiteView.
-  if (mView) {
-    for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
-      mChildren[i]->Show(aState);
-    }
-  }
 }
 
 void*
@@ -110,10 +135,6 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 
   LOGT("t: %p, DataType: %i", this, aDataType);
   switch (aDataType) {
-    case NS_NATIVE_SHAREABLE_WINDOW: {
-      LOGW("aDataType: %i\n", aDataType);
-      return (void*)nullptr;
-    }
     case NS_NATIVE_OPENGL_CONTEXT:
       return nullptr;
     case NS_NATIVE_WINDOW:
@@ -132,22 +153,15 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
   return nullptr;
 }
 
-nsresult
-EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
+nsEventStatus
+EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event)
 {
   if (Destroyed()) {
-    return NS_OK;
+    return nsEventStatus_eIgnore;
   }
 
   LOGT();
   MOZ_ASSERT(event);
-  aStatus = nsEventStatus_eIgnore;
-
-  nsIWidgetListener* listener =
-    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
-
-  NS_ASSERTION(listener, "No listener!");
-
   if (event->mClass == eKeyboardEventClass) {
     RemoveIMEComposition();
   } else if (event->mClass == eCompositionEventClass) {
@@ -168,11 +182,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
      mNativeIMEContext = compositionEvent->mNativeIMEContext;
   }
 
-  if (listener) {
-    aStatus = listener->HandleEvent(event, mUseAttachedEvents);
-  } else {
-    aStatus = nsEventStatus_eIgnore;
-  }
+  nsEventStatus status = nsIWidget::DispatchEvent(event);
 
   switch (event->mMessage) {
     case eCompositionStart:
@@ -180,6 +190,8 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
       mIMEComposing = true;
       break;
     case eCompositionEnd:
+    case eCompositionCommit:
+    case eCompositionCommitAsIs:
       MOZ_ASSERT(mIMEComposing);
       mIMEComposing = false;
       mIMEComposingText.Truncate();
@@ -193,7 +205,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
       break;
   }
 
-  return NS_OK;
+  return status;
 }
 
 void
@@ -229,16 +241,9 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
   mInputContext = aContext;
   mInputContext.mIMEState.mEnabled = enabled;
 
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  if (view) {
-    view->SetInputContext(
-      static_cast<int32_t>(aContext.mIMEState.mEnabled),
-      static_cast<int32_t>(aContext.mIMEState.mOpen),
-      aContext.mHTMLInputType,
-      aContext.mHTMLInputMode,
-      aContext.mActionHint,
-      static_cast<int32_t>(aAction.mCause),
-      static_cast<int32_t>(aAction.mFocusChange));
+  if (nsWindow* chromeHost = dynamic_cast<nsWindow*>(GetParent())) {
+    mInputContext = aContext;
+    chromeHost->SetChromeInputContext(aContext, aAction);
   }
 }
 
@@ -246,17 +251,6 @@ InputContext
 EmbedLitePuppetWidget::GetInputContext()
 {
   LOGT();
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-
-  if (view) {
-    int32_t enabled = static_cast<int32_t>(IMEEnabled::Disabled);
-    int32_t open = IMEState::OPEN_STATE_NOT_SUPPORTED;
-
-    view->GetInputContext(&enabled, &open);
-    mInputContext.mIMEState.mEnabled = static_cast<IMEEnabled>(enabled);
-    mInputContext.mIMEState.mOpen = static_cast<IMEState::Open>(open);
-  }
-
   return mInputContext;
 }
 
@@ -276,35 +270,22 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
     return;
   }
 
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  if (view) {
-    view->ResetInputState();
-  }
-
   RefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
 
   WidgetCompositionEvent textEvent(true, eCompositionChange, this);
   textEvent.mTimeStamp = TimeStamp::Now();
   textEvent.mData = mIMEComposingText;
-  nsEventStatus status;
-  DispatchEvent(&textEvent, status);
+  DispatchEvent(&textEvent);
 
   WidgetCompositionEvent event(true, eCompositionEnd, this);
   event.mTimeStamp = TimeStamp::Now();
-  DispatchEvent(&event, status);
-}
-
-EmbedLitePuppetWidget *
-EmbedLitePuppetWidget::GetParentPuppetWidget() const
-{
-  return dynamic_cast<EmbedLitePuppetWidget *>(mParent);
+  DispatchEvent(&event);
 }
 
 bool
 EmbedLitePuppetWidget::NeedsPaint()
 {
-  // Widgets representing EmbedLite view and window don't need to paint anything.
-  if (Destroyed() || mView) {
+  if (Destroyed()) {
     return false;
   }
   return nsIWidget::NeedsPaint();
@@ -313,12 +294,12 @@ EmbedLitePuppetWidget::NeedsPaint()
 float
 EmbedLitePuppetWidget::GetDPI()
 {
+  if (GetParent()) {
+    return PuppetWidgetBase::GetDPI();
+  }
+
   if (mDPI < 0) {
-    if (mView) {
-      mView->GetDPI(&mDPI);
-    } else {
-      mDPI = nsBaseWidget::GetDPI();
-    }
+    mDPI = nsIWidget::GetFallbackDPI();
   }
 
   return mDPI;
@@ -327,26 +308,6 @@ EmbedLitePuppetWidget::GetDPI()
 bool EmbedLitePuppetWidget::AsyncPanZoomEnabled() const
 {
   return true;
-}
-
-void EmbedLitePuppetWidget::SetConfirmedTargetAPZC(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets) const
-{
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  LOGT("view: %p", view);
-  if (view) {
-    view->SetTargetAPZC(aInputBlockId, aTargets);
-  }
-}
-
-void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const ScrollableLayerGuid::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
-{
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  LOGT("view: %p", view);
-  if (view) {
-    view->UpdateZoomConstraints(aPresShellId,
-                                aViewId,
-                                aConstraints);
-  }
 }
 
 void EmbedLitePuppetWidget::CreateCompositor()
@@ -377,47 +338,14 @@ EmbedLitePuppetWidget::GetWindowRenderer()
     return windowRenderer;
   }
 
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget && topWidget != this) {
-      // Borrow the root renderer for painting, but do not cache it in this
-      // child widget. mWindowRenderer is owning, and child-widget teardown must
-      // not destroy the root WebRender layer manager.
-      return topWidget->GetWindowRenderer();
+  if (nsIWidget* parent = GetParent()) {
+    // Borrow the parent renderer for painting, but do not cache it in this
+    // child widget. mWindowRenderer is owning, and child-widget teardown must
+    // not destroy the root WebRender layer manager.
+    return parent->GetWindowRenderer();
   }
 
   return nullptr;
-}
-
-bool
-EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault)
-{
-  if (Destroyed()) {
-    return false;
-  }
-
-  LOGT("thread id: %ld", syscall(SYS_gettid));
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  if (view) {
-    view->DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
-    return true;
-  }
-  return false;
-}
-
-bool
-EmbedLitePuppetWidget::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
-{
-  if (Destroyed()) {
-    return false;
-  }
-
-  LOGT("thread id: %ld", syscall(SYS_gettid));
-  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  if (view) {
-    return view->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
-  }
-
-  return false;
 }
 
 void EmbedLitePuppetWidget::AddObserver(EmbedLitePuppetWidgetObserver *aObserver)
@@ -430,35 +358,34 @@ void EmbedLitePuppetWidget::RemoveObserver(EmbedLitePuppetWidgetObserver *aObser
   mObservers.RemoveElement(aObserver);
 }
 
-EmbedLitePuppetWidget::EmbedLitePuppetWidget()
-  : EmbedLitePuppetWidget(nullptr)
+void EmbedLitePuppetWidget::NotifyChromeWindowFocusChanged(bool aFocused)
 {
-}
-
-EmbedLiteViewChildIface*
-EmbedLitePuppetWidget::GetEmbedLiteChildView() const
-{
-  if (mView) {
-    return mView;
+  // Top-level activation belongs to the primary listener.  The attached
+  // listener handles painting and input events for the hosted view, but does
+  // not update the AppWindow's focus-manager state.
+  nsIWidgetListener* listener = GetWidgetListener();
+  if (!listener) {
+    return;
   }
 
-  if (EmbedLitePuppetWidget *parentWidget = GetParentPuppetWidget()) {
-    return parentWidget->GetEmbedLiteChildView();
+  if (aFocused) {
+    listener->WindowActivated();
+  } else {
+    listener->WindowDeactivated();
   }
-  return nullptr;
 }
 
 void EmbedLitePuppetWidget::ConfigureAPZCTreeManager()
 {
-  LOGT("Do nothing - APZEventState configured in EmbedLiteViewChild");
+  LOGT("APZEventState is configured by the hosted root nsWindow");
 }
 
 void EmbedLitePuppetWidget::ConfigureAPZControllerThread()
 {
-  LOGT("Do nothing - APZController thread configured in EmbedLiteViewParent");
+  LOGT("APZ controller thread is configured by the hosted root nsWindow");
 }
 
-already_AddRefed<GeckoContentController>
+already_AddRefed<layers::GeckoContentController>
 EmbedLitePuppetWidget::CreateRootContentController()
 {
   return nullptr;

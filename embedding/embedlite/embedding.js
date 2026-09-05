@@ -134,6 +134,9 @@ pref("browser.cache.disk.smart_size.first_run", true);
 pref("browser.cache.memory.capacity", 1024); // kilobytes
 pref("browser.cache.memory_limit", 5120); // 5 MB
 
+// Sailfish handles download confirmation and lifecycle UI outside Gecko.
+pref("browser.download.skipConfirmLaunchExecutable", true);
+
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
 
@@ -164,6 +167,9 @@ pref("network.protocol-handler.expose.geo", false);
 // web-handler stubs such as Gmail for mailto:, since they bypass Sailfish
 // content-action handling.
 pref("gecko.handlerService.disableDefaultProtocolHandlers", true);
+// Sailfish provides the external-protocol confirmation through its platform
+// content-action UI rather than Gecko's browser-chrome permission dialog.
+pref("security.external_protocol_requires_permission", false);
 
 /* disable some protocol warnings */
 pref("network.protocol-handler.warn-external.tel", false);
@@ -194,8 +200,11 @@ pref("network.predictor.enabled", true);
 pref("network.predictor.max-db-size", 2097152); // bytes
 pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
 
-// EmbedLite restores browser tab history through legacySHistory; keep that API available.
-pref("fission.disableSessionHistoryInParent", true);
+// Hosted tab sessions populate parent-owned history when a restored tab is
+// materialized. Sailfish persists the lightweight session data itself, so keep
+// parent BFCache and Firefox's platform SessionStore collection disabled.
+pref("fission.bfcacheInParent", false);
+pref("browser.sessionstore.disable_platform_collection", true);
 
 // ESR115's COOP top-level isolation path assumes Firefox's remote <browser>
 // frontend can replace a BrowsingContext or change remoteness during
@@ -377,8 +386,11 @@ pref("media.cache_readahead_limit", 30);
 pref("media.video-queue.default-size", 3);
 
 // Use Gecko/FFmpeg/gecko-camera media paths; gmp-droid is no longer shipped.
-// EmbedLite has no remote RDD decoder path; decode supported formats locally.
+// EmbedLite has no remote decoder process path; decode supported formats
+// locally.
 pref("media.rdd-process.enabled", false);
+pref("media.utility-process.enabled", false);
+pref("media.allow-audio-non-utility", true);
 pref("media.gmp.decoder.enabled", false);
 pref("media.decoder.recycle.enabled", true);
 
@@ -446,6 +458,11 @@ pref("security.OCSP.enabled", 2);
 
 // The audio backend, see cubeb_init && CubebUtils.cpp (sCubebBackendName)
 pref("media.cubeb.backend", "pulse");
+
+// Desktop capture is not supported by EmbedLite.
+pref("media.getdisplaymedia.enabled", false);
+pref("media.getusermedia.browser.enabled", false);
+pref("media.getusermedia.screensharing.enabled", false);
 
 // Enable serviceworkers
 pref("dom.serviceWorkers.enabled", true);
