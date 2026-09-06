@@ -143,6 +143,7 @@ Patch87:     0087-Add-safe-Qt-display-fallback-for-hybris.patch
 Patch88:     0088-Keep-certificate-error-controls-above-toolbar.patch
 Patch89:     0089-Allow-EmbedLite-beforeunload-confirmation.patch
 Patch90:     0090-sailfishos-egl-Use-surfaceless-Qt-contexts-on-Mesa.patch
+Patch91:     0091-sailfishos-egl-Restrict-shared-context-fallback-to-c.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
