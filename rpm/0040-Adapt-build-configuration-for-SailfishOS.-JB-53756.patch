@@ -81,7 +81,7 @@ index 1bcc33e1927c..8a0d15dab180 100644
  
  # Whether using Xvfb to provide a display server for a test might be
 diff --git a/third_party/libwebrtc/modules/BUILD.gn b/third_party/libwebrtc/modules/BUILD.gn
-index ffb7491b31d4..76da07af1bb9 100644
+index 4870cb349995..ac2a3a859839 100644
 --- a/third_party/libwebrtc/modules/BUILD.gn
 +++ b/third_party/libwebrtc/modules/BUILD.gn
 @@ -23,7 +23,7 @@ group("modules") {

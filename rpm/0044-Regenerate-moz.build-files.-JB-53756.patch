@@ -247,10 +247,10 @@ index 2449653897224..82d5544064a20 100644
  
  Library("video_capture_internal_impl_gn")
 diff --git a/third_party/libwebrtc/moz.build b/third_party/libwebrtc/moz.build
-index dbb14f5be1164..4dd0a28193b2b 100644
+index 5c9a364dd518a..540e0287e8928 100644
 --- a/third_party/libwebrtc/moz.build
 +++ b/third_party/libwebrtc/moz.build
-@@ -549,14 +549,7 @@ if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "Linux":
+@@ -550,14 +550,7 @@ if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "Linux":
  
      DIRS += [
          "/third_party/libwebrtc/common_audio/common_audio_neon_c_gn",
@@ -266,7 +266,7 @@ index dbb14f5be1164..4dd0a28193b2b 100644
      ]
  
  if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Linux":
-@@ -564,38 +557,7 @@ if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Linux":
+@@ -565,38 +558,7 @@ if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Linux":
      DIRS += [
          "/third_party/libwebrtc/common_audio/common_audio_neon_c_gn",
          "/third_party/libwebrtc/common_audio/common_audio_neon_gn",
@@ -306,7 +306,7 @@ index dbb14f5be1164..4dd0a28193b2b 100644
      ]
  
  if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Linux":
-@@ -604,15 +566,7 @@ if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Linux":
+@@ -605,15 +567,7 @@ if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Linux":
          "/third_party/libwebrtc/common_audio/common_audio_avx2_gn",
          "/third_party/libwebrtc/common_audio/common_audio_sse2_gn",
          "/third_party/libwebrtc/modules/audio_processing/aec3/aec3_avx2_gn",
@@ -323,7 +323,7 @@ index dbb14f5be1164..4dd0a28193b2b 100644
      ]
  
  if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
-@@ -621,15 +575,7 @@ if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
+@@ -622,15 +576,7 @@ if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
          "/third_party/libwebrtc/common_audio/common_audio_avx2_gn",
          "/third_party/libwebrtc/common_audio/common_audio_sse2_gn",
          "/third_party/libwebrtc/modules/audio_processing/aec3/aec3_avx2_gn",
@@ -340,7 +340,7 @@ index dbb14f5be1164..4dd0a28193b2b 100644
      ]
  
  if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "OpenBSD":
-@@ -675,17 +621,3 @@ if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "WINNT":
+@@ -676,17 +622,3 @@ if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "WINNT":
          "/third_party/libwebrtc/modules/audio_processing/agc2/rnn_vad/vector_math_avx2_gn",
          "/third_party/libwebrtc/modules/desktop_capture/desktop_capture_differ_sse2_gn"
      ]

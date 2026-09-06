@@ -166,10 +166,10 @@ index aaf786699f1c..6ab74367144b 100644
  
   protected:
 diff --git a/third_party/libwebrtc/modules/video_capture/BUILD.gn b/third_party/libwebrtc/modules/video_capture/BUILD.gn
-index 65468cecd7ed..659f08f25f91 100644
+index f3a09975e537..0ecd089a9877 100644
 --- a/third_party/libwebrtc/modules/video_capture/BUILD.gn
 +++ b/third_party/libwebrtc/modules/video_capture/BUILD.gn
-@@ -69,7 +69,15 @@ if (!build_with_chromium || is_linux || is_chromeos) {
+@@ -71,7 +71,15 @@ if (!build_with_chromium || is_linux || is_chromeos) {
        "video_capture_options.h",
      ]
  
@@ -698,10 +698,10 @@ index 000000000000..4bee2416a122
 +
 +#endif // WEBRTC_MODULES_VIDEO_CAPTURE_MAIN_SOURCE_SFOS_VIDEO_CAPTURE_SFOS_H_
 diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc b/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc
-index 9d9a1471e8d0..dc3a9e154d9a 100644
+index 02404697ada2..d3698717473c 100644
 --- a/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc
 +++ b/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc
-@@ -330,5 +330,16 @@ uint32_t VideoCaptureImpl::CalculateFrameRate(int64_t now_ns) {
+@@ -338,5 +338,16 @@ uint32_t VideoCaptureImpl::CalculateFrameRate(int64_t now_ns) {
  
    return nrOfFrames;
  }
@@ -719,10 +719,10 @@ index 9d9a1471e8d0..dc3a9e154d9a 100644
  }  // namespace videocapturemodule
  }  // namespace webrtc
 diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_impl.h b/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
-index 005c5c1fde39..1dd66b8c7f0d 100644
+index dcc93fd3a0c1..b96ab9b99dbb 100644
 --- a/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
 +++ b/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
-@@ -77,6 +77,9 @@ class RTC_EXPORT VideoCaptureImpl : public VideoCaptureModule {
+@@ -79,6 +79,9 @@ class RTC_EXPORT VideoCaptureImpl : public VideoCaptureModule {
                          size_t videoFrameLength,
                          const VideoCaptureCapability& frameInfo,
                          int64_t captureTime = 0);
