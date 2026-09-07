@@ -79,10 +79,10 @@ index d55591d10a08..671a44ac4bc8 100644
    // When mChildToParentConversionMatrix is Nothing() this value is invalid.
    ScreenRect mTopLevelViewportVisibleRectInBrowserCoords;
 diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
-index 4783f5a9d2b7..e6be73f41301 100644
+index d1910fcec5ff..77aef3611828 100644
 --- a/dom/ipc/BrowserParent.cpp
 +++ b/dom/ipc/BrowserParent.cpp
-@@ -164,8 +164,8 @@ using namespace mozilla::widget;
+@@ -166,8 +166,8 @@ using namespace mozilla::widget;
  using namespace mozilla::gfx;
  
  using mozilla::LazyLogModule;
@@ -92,7 +92,7 @@ index 4783f5a9d2b7..e6be73f41301 100644
  
  LazyLogModule gBrowserFocusLog("BrowserFocus");
  
-@@ -631,6 +631,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
+@@ -633,6 +633,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
    mDPI = -1;
    TryCacheDPIAndScale();
  
@@ -110,7 +110,7 @@ index 4783f5a9d2b7..e6be73f41301 100644
    if (mRemoteLayerTreeOwner.IsInitialized()) {
      mRemoteLayerTreeOwner.OwnerContentChanged();
    }
-@@ -3363,6 +3374,30 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
+@@ -3389,6 +3400,30 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
    return IPC_OK();
  }
  

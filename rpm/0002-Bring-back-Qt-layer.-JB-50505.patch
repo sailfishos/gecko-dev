@@ -1043,7 +1043,7 @@ index 193ef01ee1cf..4b04447a90be 100644
    UniquePtr<SandboxPolicy> policy;
  
 diff --git a/gfx/thebes/gfxFont.h b/gfx/thebes/gfxFont.h
-index 9565fdf0a8f4..9e2f098eb430 100644
+index 4ff670fd8092..69191d36b0a2 100644
 --- a/gfx/thebes/gfxFont.h
 +++ b/gfx/thebes/gfxFont.h
 @@ -81,7 +81,7 @@ typedef struct _cairo_scaled_font cairo_scaled_font_t;

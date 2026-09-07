@@ -13,7 +13,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 9 insertions(+), 1 deletion(-)
 
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 9836c60d4923..0478f241748f 100644
+index 73b0c3131b95..230cbe33a59f 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
 @@ -3179,7 +3179,15 @@ nsDocShell::GetDomWindow(mozIDOMWindowProxy** aWindow) {

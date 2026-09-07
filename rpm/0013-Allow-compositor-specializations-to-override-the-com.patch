@@ -64,7 +64,7 @@ index ac147fd24159..413c81e10217 100644
  
  }  // namespace layers
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index c979616dcaf0..458cf27c333d 100644
+index bcd46f4d2c58..29af6d5d14d8 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
 @@ -2939,5 +2939,10 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
