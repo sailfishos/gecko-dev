@@ -36,6 +36,7 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/FrameCrashedEvent.h"
 #include "mozilla/dom/LoadURIOptionsBinding.h"
+#include "mozilla/dom/ProcessIsolation.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
 #include "mozilla/dom/ReferrerInfo.h"
@@ -1201,6 +1202,17 @@ nsresult EmbedLiteChromeSessionChild::CreateBrowserForTab(
     kNameSpaceID_None, nsGkAtoms::nodefaultsrc, u"true"_ns, false);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  BrowsingContext* parentContext = document->GetBrowsingContext();
+  NS_ENSURE_TRUE(parentContext, NS_ERROR_UNEXPECTED);
+  OriginAttributes originAttributes = aOpenWindowInfo
+    ? aOpenWindowInfo->GetOriginAttributes()
+    : parentContext->OriginAttributesRef();
+  originAttributes.SyncAttributesWithPrivateBrowsing(
+    parentContext->UsePrivateBrowsing());
+  rv = browser->SetAttr(
+    kNameSpaceID_None, nsGkAtoms::RemoteType,
+    NS_ConvertUTF8toUTF16(SharedWebRemoteType(originAttributes)), false);
+  NS_ENSURE_SUCCESS(rv, rv);
   rv = browser->SetAttr(
     kNameSpaceID_None, nsGkAtoms::remote, u"true"_ns, false);
   NS_ENSURE_SUCCESS(rv, rv);
