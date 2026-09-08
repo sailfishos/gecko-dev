@@ -48,7 +48,7 @@
 # Gecko is intentionally built without DWARF.  Avoid running debugedit over
 # its exceptionally large runtime ELFs in OBS, where it exceeds the worker's
 # inactivity timeout without producing useful debuginfo packages.
-%undefine _enable_debug_packages
+%global debug_package %{nil}
 
 
 Name:       xulrunner-qt5
