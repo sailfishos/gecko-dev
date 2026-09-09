@@ -24,6 +24,7 @@
 #include "nsNetUtil.h"
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
+#include "nsIXULRuntime.h"
 
 using namespace mozilla::dom;
 
@@ -612,6 +613,9 @@ bool EmbedLiteHostedWindow::CreateChromeAppWindow()
     nsIWebBrowserChrome::CHROME_WINDOW_RESIZE |
     nsIWebBrowserChrome::CHROME_SCROLLBARS |
     nsIWebBrowserChrome::CHROME_REMOTE_WINDOW;
+  if (mozilla::FissionAutostart()) {
+    chromeFlags |= nsIWebBrowserChrome::CHROME_FISSION_WINDOW;
+  }
   if (mPrivateBrowsing) {
     chromeFlags |= nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW |
                    nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;

@@ -9,3 +9,7 @@ embedlitechrome.jar:
   content/contentbridge-child.js (content/contentbridge-child.js)
   content/domfullscreen-child.sys.mjs (content/domfullscreen-child.sys.mjs)
   content/domfullscreen-parent.sys.mjs (content/domfullscreen-parent.sys.mjs)
+  content/frame-parent.sys.mjs (content/frame-parent.sys.mjs)
+  content/frame-child.sys.mjs (content/frame-child.sys.mjs)
+  content/frame-geometry.sys.mjs (content/frame-geometry.sys.mjs)
+  content/find-parent.sys.mjs (content/find-parent.sys.mjs)

@@ -5,6 +5,36 @@
 "use strict";
 
 (() => {
+  const { findInPage } = ChromeUtils.importESModule(
+    "chrome://embedlitechrome/content/find-parent.sys.mjs");
+  try {
+    ChromeUtils.registerWindowActor("Finder", {
+      child: { esModuleURI: "resource://gre/actors/FinderChild.sys.mjs" },
+      allFrames: true,
+    });
+  } catch (error) {
+    if (error.name !== "NotSupportedError") throw error;
+  }
+
+  const frameBridge = ChromeUtils.importESModule(
+    "chrome://embedlitechrome/content/frame-parent.sys.mjs");
+  try {
+    ChromeUtils.registerWindowActor("EmbedLiteFrame", {
+      parent: { esModuleURI: "chrome://embedlitechrome/content/frame-parent.sys.mjs" },
+      child: {
+        esModuleURI: "chrome://embedlitechrome/content/frame-child.sys.mjs",
+        events: {
+          DOMWindowCreated: {}, pageshow: {}, pagehide: {},
+          focus: { capture: true }, touchstart: { capture: true },
+          mousedown: { capture: true },
+        },
+      },
+      allFrames: true,
+    });
+  } catch (error) {
+    if (error.name !== "NotSupportedError") throw error;
+  }
+
   const INTERNAL_STATE = "EmbedLiteChrome:State";
   const INTERNAL_SCRIPT =
     "chrome://embedlitechrome/content/contentbridge-child.js";
@@ -84,6 +114,7 @@
   }
 
   function messageListener(browser, name) {
+    frameBridge.listenDocumentMessage(browser, name, true);
     const messageManager = contentMessageManager(browser);
     if (!messageManager) {
       return;
@@ -111,6 +142,7 @@
   }
 
   function removeMessageListener(browser, name) {
+    frameBridge.listenDocumentMessage(browser, name, false);
     const byName = listeners.get(browser);
     const listener = byName?.get(name);
     if (!listener) {
@@ -124,6 +156,7 @@
   }
 
   function loadFrameScript(browser, uri) {
+    if (frameBridge.loadDocumentHelper(browser, uri)) return;
     const messageManager = contentMessageManager(browser);
     if (!messageManager) {
       return;
@@ -141,6 +174,8 @@
   }
 
   function attach(browser) {
+    frameBridge.attachFrameBridge(browser, (name, data) =>
+      emit(browser, "EmbedLiteChromeContentMessage", name, data));
     if (!contentMessageManager(browser)) {
       return;
     }
@@ -226,6 +261,15 @@
           removeMessageListener(browser, name);
           break;
         case "send-message": {
+          if (name === "embedui:find") {
+            findInPage(browser, JSON.parse(data), result => {
+              if (messageNames.has("embed:find")) {
+                emit(browser, "EmbedLiteChromeContentMessage", "embed:find", result);
+              }
+            }).catch(error => console.error("EmbedLite find failed", error));
+            break;
+          }
+          if (frameBridge.sendDocumentMessage(browser, name, JSON.parse(data))) break;
           const messageManager = contentMessageManager(browser);
           messageManager?.sendAsyncMessage(name, JSON.parse(data));
           break;

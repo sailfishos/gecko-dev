@@ -26,6 +26,23 @@ it does not provide Browser's Sailfish toolbar or other QML UI.
 EmbedLite does not create a local docshell for web content and does not emulate
 a Firefox content actor.
 
+The AppWindow also receives `CHROME_FISSION_WINDOW` when Gecko's Fission
+startup policy enables site isolation. `browser.xhtml` loads the toolkit
+custom-element bootstrap so each browser supplies `nsIBrowser`, including the
+callbacks needed to complete top-level process switches. Chrome message
+listeners and frame scripts are reattached when the frame loader changes.
+
+The `EmbedLiteFrame` window actor hosts document helpers in every frame,
+including cross-process iframes. Select and clipboard replies return to the
+requesting document; teardown invalidates pending requests, and request IDs
+remain unique when BFCache restores a document's helpers. Selection and
+context-menu coordinates are transformed between frame and top-level space.
+The top-level content-state bridge remains a frame script.
+
+Find-in-page uses Gecko's parent-side `FinderParent` and per-frame `Finder`
+actors to search across process boundaries, including next/previous wrapping.
+Search replies are discarded after cancellation or top-level navigation.
+
 Private windows pass `CHROME_PRIVATE_WINDOW` to
 `nsIAppShellService::CreateTopLevelWindow`.  Firefox therefore creates the
 private chrome browsing context before the remote browser is attached.
@@ -34,8 +51,9 @@ origin attributes (or the parent context's attributes), synchronizes them with
 the parent context's `UsePrivateBrowsing()`, and sets `RemoteType` using
 `SharedWebRemoteType()` before setting `remote=true`.  The chrome context's
 stored origin attributes alone are insufficient: its private ID can remain
-zero.  Selecting the initial private remote type avoids starting as `web` and
-then stalling while changing to `web=^privateBrowsingId=1` on the first load.
+zero. Selecting the initial private remote type establishes private process
+isolation before the first load; subsequent site and COOP process switches
+retain that privacy context.
 Private hosted windows retain their own AppWindow and lifetime; Browser
 excludes private tabs from normal session persistence and restoration.
 

@@ -154,15 +154,6 @@ pref("network.buffer.cache.size",  16384);
 pref("fission.bfcacheInParent", false);
 pref("browser.sessionstore.disable_platform_collection", true);
 
-// ESR115's COOP top-level isolation path assumes Firefox's remote <browser>
-// frontend can replace a BrowsingContext or change remoteness during
-// navigation. EmbedLite uses windowless nsWebBrowser views with detached
-// BrowsingContexts, so it cannot complete that frontend handoff yet. Leaving
-// the path enabled can make ordinary opener-policy transitions hit Gecko's
-// BrowsingContext OpenerPolicy invariant and crash. Disable COOP-driven
-// remoteness until EmbedLite has top-level remoteness support.
-pref("browser.tabs.remote.useCrossOriginOpenerPolicy", false);
-
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
 pref("browser.sessionhistory.max_entries", 50);
