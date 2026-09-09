@@ -43,6 +43,11 @@ Find-in-page uses Gecko's parent-side `FinderParent` and per-frame `Finder`
 actors to search across process boundaries, including next/previous wrapping.
 Search replies are discarded after cancellation or top-level navigation.
 
+Parent-owned back/forward caching preserves eligible pages and their Fission
+subframes across navigation. Qt uses Android's RAM-based capacity calculation,
+capped at eight cached viewers, with a six-minute expiration timeout.
+Sailfish's persistent session data remains separate from this in-memory cache.
+
 Media decoding uses Gecko's remote decoder actors from each content process,
 including Fission subframes. By default, video decoding runs in RDD, where
 the existing gecko-camera decoder is registered alongside the software decoders.

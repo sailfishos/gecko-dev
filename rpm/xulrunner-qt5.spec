@@ -135,6 +135,7 @@ Patch74:    0074-sailfishos-egl-Restrict-shared-context-fallback-to-c.patch
 Patch75:    0075-sailfishos-apz-Apply-initial-resolution-before-fir.patch
 Patch76:    0076-sailfishos-media-Keep-gecko-camera-decoding-in-RDD.patch
 Patch77:    0077-sailfishos-qt-Use-minimal-QPA-in-media-decoder-proc.patch
+Patch78:    0078-sailfishos-history-Use-Android-BFCache-sizing-on-Qt.patch
 
 BuildRequires:  rust >= 1.90.0
 BuildRequires:  rust-std-static >= 1.90.0

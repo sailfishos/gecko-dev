@@ -150,12 +150,12 @@ pref("network.buffer.cache.size",  16384);
 
 // Hosted tab sessions populate parent-owned history when a restored tab is
 // materialized. Sailfish persists the lightweight session data itself, so keep
-// parent BFCache and Firefox's platform SessionStore collection disabled.
-pref("fission.bfcacheInParent", false);
+// Firefox's platform SessionStore collection disabled.
+pref("fission.bfcacheInParent", true);
 pref("browser.sessionstore.disable_platform_collection", true);
 
 /* session history */
-pref("browser.sessionhistory.max_total_viewers", 1);
+pref("browser.sessionhistory.max_total_viewers", -1);
 pref("browser.sessionhistory.max_entries", 50);
 pref("browser.sessionhistory.contentViewerTimeout", 360);
 
