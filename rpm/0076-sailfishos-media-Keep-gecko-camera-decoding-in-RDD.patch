@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 9 Sep 2026 13:03:52 +0200
+Subject: [sailfishos][media] Keep gecko-camera decoding in RDD when enabled
+
+Do not initialize or register the local gecko-camera decoder in content
+processes when remote video decoding is enabled. Decoder failures must not
+silently move hardware decoding back into Fission content processes.
+---
+ dom/media/platforms/PDMFactory.cpp | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
+index e44e10c1d59a..3255d8a4e578 100644
+--- a/dom/media/platforms/PDMFactory.cpp
++++ b/dom/media/platforms/PDMFactory.cpp
+@@ -168,7 +168,10 @@ class PDMInitializer final {
+ #endif  // !defined(MOZ_WIDGET_ANDROID)
+ 
+ #ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
+-    GeckoCameraDecoderModule::Init();
++    if (!StaticPrefs::media_rdd_process_enabled() &&
++        StaticPrefs::media_gecko_camera_codec_enabled()) {
++      GeckoCameraDecoderModule::Init();
++    }
+ #endif
+     RemoteMediaManagerChild::Init();
+   }
+@@ -686,9 +689,8 @@ void PDMFactory::CreateContentPDMs() {
+ #endif
+ 
+ #ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
+-  if (StaticPrefs::media_gecko_camera_codec_enabled()) {
+-    // Keep remote decoders first, but prefer gecko-camera over local software
+-    // decoder modules when content-process fallback is used.
++  if (!StaticPrefs::media_rdd_process_enabled() &&
++      StaticPrefs::media_gecko_camera_codec_enabled()) {
+     StartupPDM(GeckoCameraDecoderModule::Create());
+   }
+ #endif

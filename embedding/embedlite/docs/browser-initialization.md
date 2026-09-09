@@ -43,6 +43,17 @@ Find-in-page uses Gecko's parent-side `FinderParent` and per-frame `Finder`
 actors to search across process boundaries, including next/previous wrapping.
 Search replies are discarded after cancellation or top-level navigation.
 
+Media decoding uses Gecko's remote decoder actors from each content process,
+including Fission subframes. By default, video decoding runs in RDD, where
+the existing gecko-camera decoder is registered alongside the software decoders.
+Audio decoding runs in the utility process, with non-utility audio fallback disabled.
+Gecko owns decoder-process startup, IPC bridges, and shutdown; EmbedLite does
+not create a separate media host. RDD and utility use Qt's minimal platform
+backend rather than connecting to Wayland. While RDD is enabled, gecko-camera
+is not initialized or registered as a content-process decoder.
+These process boundaries currently provide crash separation, but the Sailfish
+build still disables Gecko's OS sandbox.
+
 Private windows pass `CHROME_PRIVATE_WINDOW` to
 `nsIAppShellService::CreateTopLevelWindow`.  Firefox therefore creates the
 private chrome browsing context before the remote browser is attached.

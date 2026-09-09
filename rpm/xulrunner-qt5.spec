@@ -133,6 +133,8 @@ Patch72:    0072-sailfishos-neterror-Close-popup-certificate-errors.patch
 Patch73:    0073-sailfishos-egl-Use-surfaceless-Qt-contexts-on-Mesa.patch
 Patch74:    0074-sailfishos-egl-Restrict-shared-context-fallback-to-c.patch
 Patch75:    0075-sailfishos-apz-Apply-initial-resolution-before-fir.patch
+Patch76:    0076-sailfishos-media-Keep-gecko-camera-decoding-in-RDD.patch
+Patch77:    0077-sailfishos-qt-Use-minimal-QPA-in-media-decoder-proc.patch
 
 BuildRequires:  rust >= 1.90.0
 BuildRequires:  rust-std-static >= 1.90.0
