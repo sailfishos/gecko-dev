@@ -645,7 +645,6 @@ EmbedLiteCompositorBridgeParent::AcquirePlatformFrame(
   }
 
   MutexAutoLock callbackLock(mPlatformImageCallbackMutex);
-  bool retry = false;
   RefPtr<GLContext> context;
   std::shared_ptr<SharedSurface> surface;
   PlatformFrameDescriptor descriptor;
@@ -666,26 +665,19 @@ EmbedLiteCompositorBridgeParent::AcquirePlatformFrame(
       return false;
     }
 
-    SharedSurface* sharedSurf = found->surface.get();
-    if (!sharedSurf->IsBufferAvailable()) {
-      retry = true;
-    } else {
-      descriptor = {
-        found->token,
-        found->image,
-        found->releaseFenceHandleType
-      };
-      context = found->context;
-      surface = found->surface;
-      found->state = PlatformFrameState::Acquiring;
-    }
-  }
-  if (retry) {
-    SchedulePlatformImageRetry();
-    return false;
+    descriptor = {
+      found->token,
+      found->image,
+      found->releaseFenceHandleType
+    };
+    context = found->context;
+    surface = found->surface;
+    found->state = PlatformFrameState::Acquiring;
   }
 
   MOZ_RELEASE_ASSERT(context);
+  // Pin the frame before waiting for its producer fence, without holding
+  // the frame-list lock or delaying acquisition until a retry timer fires.
   surface->ProducerReadAcquire();
   const bool accepted = callback(descriptor);
   surface->ProducerReadRelease();
