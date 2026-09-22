@@ -160,6 +160,9 @@ public:
 
   // Acquiring a frame pins its exact image until ReleasePlatformFrame. The
   // consumer must release every accepted frame before destroying the window.
+  // A newer frame may supersede a notified token before acquisition starts.
+  // In that case this returns false without invoking the callback; acquire
+  // the token from the newer PlatformFrameReady notification instead.
   MOZ_EXPORT bool AcquirePlatformFrame(
     const PlatformFrameToken& token,
     const PlatformFrameCallback& callback);

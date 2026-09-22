@@ -98,7 +98,6 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   , mPlatformFrameListener(nullptr)
   , mPlatformFrameDeliveryEnabled(false)
   , mPlatformFrameDeliveryStopPending(false)
-  , mPlatformFrameRefreshPending(false)
   , mPlatformImageRetryPending(false)
   , mPlatformFrameRetirementPending(false)
 {
@@ -261,32 +260,27 @@ EmbedLiteCompositorBridgeParent::PresentOffscreenSurface(
       return false;
     }
     mFrontBuffer = frontBuffer;
-    if (mPlatformFrameDeliveryEnabled) {
-      PlatformFrameToken readyToken = {0, 0};
-      for (const PlatformFrameRecord& frame : mPlatformFrames) {
-        if (frame.state == PlatformFrameState::Ready) {
-          readyToken = frame.token;
-          break;
+    if (mPlatformFrameDeliveryEnabled && hasDescriptor) {
+      // Keep only the newest unclaimed image. Acquisition changes Ready to
+      // Acquiring under this same lock before waiting on the producer fence,
+      // so images already being imported or sampled remain pinned. Retire
+      // superseded Ready images here on their owning render thread.
+      for (auto it = mPlatformFrames.begin(); it != mPlatformFrames.end();) {
+        if (it->state == PlatformFrameState::Ready) {
+          it = mPlatformFrames.erase(it);
+        } else {
+          ++it;
         }
       }
-      if (readyToken.IsValid()) {
-        // Keep the advertised surface pinned until the consumer can acquire
-        // its exact token. Re-advertise it in case the consumer changed, and
-        // coalesce newer composites into one refresh.
-        mPlatformFrameRefreshPending = true;
-        token = readyToken;
-      } else if (hasDescriptor) {
+      ++mNextPlatformFrameSequence;
+      if (!mNextPlatformFrameSequence) {
         ++mNextPlatformFrameSequence;
-        if (!mNextPlatformFrameSequence) {
-          ++mNextPlatformFrameSequence;
-        }
-        token = {mPlatformImageGeneration, mNextPlatformFrameSequence};
-        mPlatformFrames.push_back({token, context, frontBuffer, descriptor,
-                                   releaseFenceHandleType, nullptr,
-                                   PlatformFrameState::Ready});
-        mLatestPlatformFrameToken = token;
-        mPlatformFrameRefreshPending = false;
       }
+      token = {mPlatformImageGeneration, mNextPlatformFrameSequence};
+      mPlatformFrames.push_back({token, context, frontBuffer, descriptor,
+                                 releaseFenceHandleType, nullptr,
+                                 PlatformFrameState::Ready});
+      mLatestPlatformFrameToken = token;
     }
   }
   if (aToken) {
@@ -387,7 +381,6 @@ EmbedLiteCompositorBridgeParent::MarkReadyPlatformFramesReleased()
     }
   }
   mLatestPlatformFrameToken = {0, 0};
-  mPlatformFrameRefreshPending = false;
 }
 
 void
@@ -683,7 +676,6 @@ EmbedLiteCompositorBridgeParent::AcquirePlatformFrame(
   surface->ProducerReadRelease();
   if (accepted) {
     bool acquired = false;
-    bool scheduleRefresh = false;
     {
       MutexAutoLock imageLock(mPlatformImageMutex);
       for (PlatformFrameRecord& frame : mPlatformFrames) {
@@ -691,19 +683,9 @@ EmbedLiteCompositorBridgeParent::AcquirePlatformFrame(
             frame.state == PlatformFrameState::Acquiring) {
           frame.state = PlatformFrameState::Acquired;
           acquired = true;
-          if (frame.token == mLatestPlatformFrameToken &&
-              frame.token.epoch == mPlatformImageGeneration &&
-              mPlatformFrameDeliveryEnabled &&
-              mPlatformFrameRefreshPending) {
-            mPlatformFrameRefreshPending = false;
-            scheduleRefresh = true;
-          }
           break;
         }
       }
-    }
-    if (scheduleRefresh) {
-      ScheduleForcedRenderOnCompositorThread(wr::RenderReasons::WIDGET);
     }
     return acquired;
   } else {
@@ -817,7 +799,6 @@ EmbedLiteCompositorBridgeParent::SetPlatformFrameDeliveryEnabled(bool enabled)
 
     const PlatformFrameToken readyToken = mLatestPlatformFrameToken;
     const uint64_t generation = mPlatformImageGeneration;
-    const bool refreshPending = mPlatformFrameRefreshPending;
     MarkReadyPlatformFramesReleased();
     mPlatformFrameDeliveryStopPending = true;
     mPlatformFrameDeliveryEnabled = false;
@@ -836,7 +817,6 @@ EmbedLiteCompositorBridgeParent::SetPlatformFrameDeliveryEnabled(bool enabled)
               !frame.consumerFence) {
             frame.state = PlatformFrameState::Ready;
             mLatestPlatformFrameToken = readyToken;
-            mPlatformFrameRefreshPending = refreshPending;
             break;
           }
         }
@@ -846,7 +826,6 @@ EmbedLiteCompositorBridgeParent::SetPlatformFrameDeliveryEnabled(bool enabled)
     return true;
   }
 
-  mPlatformFrameRefreshPending = false;
   mPlatformFrameDeliveryEnabled = true;
   ++mPlatformImageGeneration;
   if (!mPlatformImageGeneration) {
