@@ -3005,6 +3005,15 @@ void EmbedLiteChromeSessionChild::UpdateLocation(
     (void) location->GetSpec(spec);
   }
 
+  // A replacement BrowsingContext can still report its initial about:blank
+  // while progress listeners are being rebound. Do not publish it as a
+  // committed visit. An explicit location notification still accepts a real
+  // navigation to about:blank.
+  if (!aLocation && spec.EqualsLiteral("about:blank") &&
+      !aTab.location.EqualsLiteral("about:blank")) {
+    spec = aTab.location;
+  }
+
   bool canGoBack = false;
   bool canGoForward = false;
   if (ChildSHistory* history = browsingContext->GetChildSessionHistory()) {
