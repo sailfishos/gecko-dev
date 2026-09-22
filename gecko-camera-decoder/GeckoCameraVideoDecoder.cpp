@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/AbstractThread.h"
-#include "mozilla/Unused.h"
 
 #include "GeckoCameraVideoDecoder.h"
 #include "AnnexB.h"
@@ -15,6 +14,8 @@
 #include "VideoUtils.h"
 #include "nsThreadUtils.h"
 
+#undef LOG
+#undef LOGEX
 #define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
 #define LOGEX(_this, ...) \
   DDMOZ_LOGEX(_this, sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
@@ -25,59 +26,67 @@ GeckoCameraVideoDecoder::GeckoCameraVideoDecoder(
     gecko::codec::CodecManager* manager,
     const CreateDecoderParams& aParams)
     : mCodecManager(manager),
-      mParams(aParams),
       mInfo(aParams.VideoConfig()),
       mImageContainer(aParams.mImageContainer),
       mImageAllocator(aParams.mKnowsCompositor),
       mMutex("GeckoCameraVideoDecoder::mMutex"),
+      mCodecControlMutex("GeckoCameraVideoDecoder::mCodecControlMutex"),
       mTaskQueue(TaskQueue::Create(
-          GetMediaThreadPool(MediaThreadType::PLATFORM_DECODER), "GeckoCameraVideoDecoder")),
-      mIsH264(MP4Decoder::IsH264(aParams.mConfig.mMimeType)),
-      mMaxRefFrames(mIsH264 ? H264::HasSPS(aParams.VideoConfig().mExtraData)
-                                  ? H264::ComputeMaxRefFrames(
-                                        aParams.VideoConfig().mExtraData)
+          GetMediaThreadPool(MediaThreadType::PLATFORM_DECODER),
+          "GeckoCameraVideoDecoder")),
+      mIsH264(MP4Decoder::IsH264(mInfo.mMimeType)),
+      mMaxRefFrames(mIsH264 ? H264::HasSPS(mInfo.mExtraData)
+                                  ? H264::ComputeMaxRefFrames(mInfo.mExtraData)
                                   : 16
                             : 0),
       mIsShutDown(false),
       mError(false),
-      mDecodeTimer(new MediaTimer()),
+      mIgnoreCallbacks(false),
+      mDecodeTimer(new MediaTimer<TimeStamp>()),
       mCommandTaskQueue(CreateMediaDecodeTaskQueue("GeckoCameraVideoDecoder")) {
   MOZ_COUNT_CTOR(GeckoCameraVideoDecoder);
-  LOG("GeckoCameraVideoDecoder - mMaxRefFrames=%d", mMaxRefFrames);
+  LOG("GeckoCameraVideoDecoder - mMaxRefFrames=%u", mMaxRefFrames);
 }
 
 RefPtr<MediaDataDecoder::InitPromise> GeckoCameraVideoDecoder::Init() {
   MediaResult rv = CreateDecoder();
   if (NS_SUCCEEDED(rv)) {
-    return InitPromise::CreateAndResolve(mParams.mConfig.GetType(), __func__);
+    return InitPromise::CreateAndResolve(TrackInfo::kVideoTrack, __func__);
   }
   return InitPromise::CreateAndReject(rv, __func__);
 }
 
 RefPtr<ShutdownPromise> GeckoCameraVideoDecoder::Shutdown() {
   RefPtr<GeckoCameraVideoDecoder> self = this;
-  return InvokeAsync(mTaskQueue, __func__, [self, this]() {
-      LOG("Shutdown");
-      mIsShutDown = true;
-      mDecodeTimer->Cancel();
-      mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
-      mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
-      mDecoderDrained = false;
+  return InvokeAsync(
+      mTaskQueue, __func__, [self, this]() -> RefPtr<ShutdownPromise> {
+    LOG("Shutdown");
+    mIsShutDown = true;
+    mDecodeTimer->Cancel();
+    mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
+    mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
+    mDecoderDrained = false;
 
-      std::shared_ptr<gecko::codec::VideoDecoder> decoder;
-      {
-        MutexAutoLock lock(mMutex);
-        decoder = mDecoder;
-        mDecoder.reset();
-        mInputFrames.clear();
-        mReorderQueue.Clear();
-      }
+    std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+    {
+      MutexAutoLock lock(mMutex);
+      ++mDecoderGeneration;
+      decoder = mDecoder;
+      mDecoder.reset();
+      mInputFrames.clear();
+      mReorderQueue.Clear();
+    }
 
-      if (decoder) {
-        decoder->setListener(nullptr);
-        decoder->stop();
-      }
-      return mTaskQueue->BeginShutdown();
+    if (decoder) {
+      MutexAutoLock lock(mCodecControlMutex);
+      decoder->stop();
+      decoder->setListener(nullptr);
+    }
+
+    return mCommandTaskQueue->BeginShutdown()->Then(
+        mTaskQueue, __func__,
+        [self](bool) { return self->mTaskQueue->BeginShutdown(); },
+        [self](bool) { return self->mTaskQueue->BeginShutdown(); });
   });
 }
 
@@ -91,28 +100,8 @@ RefPtr<MediaDataDecoder::DecodePromise> GeckoCameraVideoDecoder::Decode(
   RefPtr<GeckoCameraVideoDecoder> self = this;
   return InvokeAsync(mTaskQueue, __func__, [self, this, sample] {
     RefPtr<DecodePromise> p = mDecodePromise.Ensure(__func__);
-
-    // Throw an error if the decoder is blocked for more than a second.
-    const TimeDuration decodeTimeout = TimeDuration::FromMilliseconds(1000);
-    mDecodeTimer->WaitFor(decodeTimeout, __func__)
-        ->Then(
-            // To ublock decode(), drain the decoder on a separate thread from
-            // the decoder pool. gecko-camera must handle this without issue.
-            mCommandTaskQueue, __func__,
-            [self = RefPtr<GeckoCameraVideoDecoder>(this), this]() {
-              LOG("Decode is blocked for too long");
-              mError = true;
-              std::shared_ptr<gecko::codec::VideoDecoder> decoder;
-              {
-                MutexAutoLock lock(mMutex);
-                decoder = mDecoder;
-              }
-              if (!mIsShutDown && decoder) {
-                decoder->drain();
-              }
-            },
-            [] {});
-    ProcessDecode(sample);
+    auto decodeState = std::make_shared<DecodeStateAtomic>(DecodeState::Active);
+    ProcessDecode(sample, decodeState);
     mDecodeTimer->Cancel();
     return p;
   });
@@ -156,7 +145,10 @@ RefPtr<MediaDataDecoder::DecodePromise> GeckoCameraVideoDecoder::Drain() {
       return p;
     }
 
-    decoder->drain();
+    {
+      MutexAutoLock lock(mCodecControlMutex);
+      decoder->drain();
+    }
     return p;
   });
 }
@@ -165,16 +157,31 @@ RefPtr<MediaDataDecoder::FlushPromise> GeckoCameraVideoDecoder::Flush() {
   RefPtr<GeckoCameraVideoDecoder> self = this;
   return InvokeAsync(mTaskQueue, __func__, [self, this] {
     LOG("Flush");
+    mDecodeTimer->Cancel();
     mDecoderDrained = false;
+    mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
     mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
-    if (mDecoder) {
-      mDecoder->flush();
+
+    std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+    mIgnoreCallbacks = true;
+    {
+      MutexAutoLock lock(mMutex);
+      ++mDecoderGeneration;
+      decoder = mDecoder;
     }
-    MutexAutoLock lock(mMutex);
-    mReorderQueue.Clear();
-    mInputFrames.clear();
-    // Clear a decoder error that may occur during flushing.
-    mError = false;
+    if (decoder) {
+      MutexAutoLock lock(mCodecControlMutex);
+      decoder->flush();
+    }
+
+    {
+      MutexAutoLock lock(mMutex);
+      mReorderQueue.Clear();
+      mInputFrames.clear();
+      // Clear a decoder error that may occur during flushing.
+      mError = false;
+    }
+    mIgnoreCallbacks = false;
     return FlushPromise::CreateAndResolve(true, __func__);
   });
 }
@@ -186,7 +193,7 @@ MediaDataDecoder::ConversionRequired GeckoCameraVideoDecoder::NeedsConversion()
 }
 
 nsCString GeckoCameraVideoDecoder::GetCodecName() const {
-  const nsACString& mimeType = mParams.mConfig.mMimeType;
+  const nsACString& mimeType = mInfo.mMimeType;
   if (MP4Decoder::IsH264(mimeType)) {
     return "h264"_ns;
   }
@@ -199,86 +206,145 @@ nsCString GeckoCameraVideoDecoder::GetCodecName() const {
   return "unknown"_ns;
 }
 
-void GeckoCameraVideoDecoder::onDecodedYCbCrFrame(const gecko::camera::YCbCrFrame *frame) {
-  MOZ_ASSERT(frame, "YCbCrFrame is null");
-
-  LOG("onDecodedFrame %llu", frame->timestampUs);
-
-  if (mIsShutDown) {
-    LOG("Decoder shuts down");
-    return;
+void GeckoCameraVideoDecoder::onDecodedYCbCrFrame(
+    const gecko::camera::YCbCrFrame* aFrame) {
+  uint64_t decoderGeneration;
+  {
+    MutexAutoLock lock(mMutex);
+    if (mIsShutDown || mIgnoreCallbacks) {
+      return;
+    }
+    decoderGeneration = mDecoderGeneration;
   }
+  ProcessDecodedYCbCrFrame(aFrame, decoderGeneration);
+}
+
+void GeckoCameraVideoDecoder::ProcessDecodedYCbCrFrame(
+    const gecko::camera::YCbCrFrame* aFrame,
+    uint64_t aDecoderGeneration) {
+  MOZ_ASSERT(aFrame, "YCbCrFrame is null");
+
+  LOG("onDecodedFrame %llu",
+      static_cast<unsigned long long>(aFrame->timestampUs));
 
   RefPtr<MediaRawData> inputFrame;
   {
     MutexAutoLock lock(mMutex);
-    auto iter = mInputFrames.find(frame->timestampUs);
+    if (mIsShutDown || mIgnoreCallbacks ||
+        aDecoderGeneration != mDecoderGeneration) {
+      return;
+    }
+    auto iter = mInputFrames.find(aFrame->timestampUs);
     if (iter == mInputFrames.end()) {
-      LOG("Couldn't find input frame with timestamp %llu", frame->timestampUs);
+      LOG("Couldn't find input frame with timestamp %llu",
+          static_cast<unsigned long long>(aFrame->timestampUs));
       return;
     }
     inputFrame = iter->second;
     mInputFrames.erase(iter);
   }
 
-
   VideoData::YCbCrBuffer buffer;
   // Y plane.
-  buffer.mPlanes[0].mData = const_cast<uint8_t*>(frame->y);
-  buffer.mPlanes[0].mStride = frame->yStride;
-  buffer.mPlanes[0].mWidth = frame->width;
-  buffer.mPlanes[0].mHeight = frame->height;
+  buffer.mPlanes[0].mData = const_cast<uint8_t*>(aFrame->y);
+  buffer.mPlanes[0].mStride = aFrame->yStride;
+  buffer.mPlanes[0].mWidth = aFrame->width;
+  buffer.mPlanes[0].mHeight = aFrame->height;
   buffer.mPlanes[0].mSkip = 0;
   // Cb plane.
-  buffer.mPlanes[1].mData = const_cast<uint8_t*>(frame->cb);
-  buffer.mPlanes[1].mStride = frame->cStride;
-  buffer.mPlanes[1].mWidth = (frame->width + 1) / 2;
-  buffer.mPlanes[1].mHeight = (frame->height + 1) / 2;
-  buffer.mPlanes[1].mSkip = frame->chromaStep - 1;
+  buffer.mPlanes[1].mData = const_cast<uint8_t*>(aFrame->cb);
+  buffer.mPlanes[1].mStride = aFrame->cStride;
+  buffer.mPlanes[1].mWidth = (aFrame->width + 1) / 2;
+  buffer.mPlanes[1].mHeight = (aFrame->height + 1) / 2;
+  buffer.mPlanes[1].mSkip = aFrame->chromaStep - 1;
   // Cr plane.
-  buffer.mPlanes[2].mData = const_cast<uint8_t*>(frame->cr);
-  buffer.mPlanes[2].mStride = frame->cStride;
-  buffer.mPlanes[2].mWidth = (frame->width + 1) / 2;
-  buffer.mPlanes[2].mHeight = (frame->height + 1) / 2;
-  buffer.mPlanes[2].mSkip = frame->chromaStep - 1;
+  buffer.mPlanes[2].mData = const_cast<uint8_t*>(aFrame->cr);
+  buffer.mPlanes[2].mStride = aFrame->cStride;
+  buffer.mPlanes[2].mWidth = (aFrame->width + 1) / 2;
+  buffer.mPlanes[2].mHeight = (aFrame->height + 1) / 2;
+  buffer.mPlanes[2].mSkip = aFrame->chromaStep - 1;
 
-  buffer.mYUVColorSpace = DefaultColorSpace({frame->width, frame->height});
+  buffer.mYUVColorSpace = DefaultColorSpace({aFrame->width, aFrame->height});
   buffer.mColorDepth = gfx::ColorDepth::COLOR_8;
   buffer.mColorRange = gfx::ColorRange::LIMITED;
   buffer.mChromaSubsampling = gfx::ChromaSubsampling::HALF_WIDTH_AND_HEIGHT;
 
-  gfx::IntRect pictureRegion(0, 0, frame->width, frame->height);
-  RefPtr<MediaData> data = VideoData::CreateAndCopyData(
+  auto result = VideoData::CreateAndCopyData(
       mInfo, mImageContainer, inputFrame->mOffset,
       inputFrame->mTime, inputFrame->mDuration,
       buffer, inputFrame->mKeyframe, inputFrame->mTimecode,
-      pictureRegion, mImageAllocator);
-  if (!data) {
-    NS_ERROR("Couldn't create VideoData for frame");
+      mInfo.ScaledImageRect(aFrame->width, aFrame->height), mImageAllocator);
+  if (result.isErr()) {
+    MediaResult error = result.unwrapErr();
+    ReportError(error.Message().get(), aDecoderGeneration);
     return;
   }
+  RefPtr<VideoData> data = result.unwrap();
 
   MutexAutoLock lock(mMutex);
+  if (mIsShutDown || mIgnoreCallbacks ||
+      aDecoderGeneration != mDecoderGeneration) {
+    return;
+  }
   mReorderQueue.Push(std::move(data));
 }
 
-void GeckoCameraVideoDecoder::onDecodedGraphicBuffer(std::shared_ptr<gecko::camera::GraphicBuffer> buffer)
-{
+void GeckoCameraVideoDecoder::onDecodedGraphicBuffer(
+    std::shared_ptr<gecko::camera::GraphicBuffer> buffer) {
+  uint64_t decoderGeneration;
+  {
+    MutexAutoLock lock(mMutex);
+    if (mIsShutDown || mIgnoreCallbacks) {
+      return;
+    }
+    decoderGeneration = mDecoderGeneration;
+  }
+
   std::shared_ptr<const gecko::camera::YCbCrFrame> frame = buffer->mapYCbCr();
   if (frame) {
-    onDecodedYCbCrFrame(frame.get());
+    ProcessDecodedYCbCrFrame(frame.get(), decoderGeneration);
   } else {
-    NS_ERROR("Couldn't map GraphicBuffer");
+    ReportError("Couldn't map GraphicBuffer", decoderGeneration);
   }
 }
 
 void GeckoCameraVideoDecoder::onDecoderError(std::string errorDescription) {
-  LOG("Decoder error %s", errorDescription.c_str());
-  mError = true;
+  uint64_t decoderGeneration;
+  {
+    MutexAutoLock lock(mMutex);
+    if (mIsShutDown || mIgnoreCallbacks) {
+      return;
+    }
+    decoderGeneration = mDecoderGeneration;
+  }
+  ReportError(std::move(errorDescription), decoderGeneration);
+}
+
+void GeckoCameraVideoDecoder::ReportError(std::string aErrorDescription,
+                                          uint64_t aDecoderGeneration) {
+  {
+    MutexAutoLock lock(mMutex);
+    if (mIsShutDown || mIgnoreCallbacks ||
+        aDecoderGeneration != mDecoderGeneration) {
+      return;
+    }
+    mError = true;
+    mInputFrames.clear();
+  }
+
+  LOG("Decoder error %s", aErrorDescription.c_str());
 
   RefPtr<GeckoCameraVideoDecoder> self = this;
   nsresult rv = mTaskQueue->Dispatch(NS_NewRunnableFunction(
-      "GeckoCameraVideoDecoder::onDecoderError", [self]() {
+      "GeckoCameraVideoDecoder::onDecoderError",
+      [self, decoderGeneration = aDecoderGeneration]() {
+        {
+          MutexAutoLock lock(self->mMutex);
+          if (self->mIsShutDown || self->mIgnoreCallbacks ||
+              decoderGeneration != self->mDecoderGeneration) {
+            return;
+          }
+        }
         self->mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_FATAL_ERR,
                                             __func__);
         self->mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_FATAL_ERR,
@@ -287,16 +353,31 @@ void GeckoCameraVideoDecoder::onDecoderError(std::string errorDescription) {
   if (NS_FAILED(rv)) {
     LOG("Couldn't dispatch decoder error");
   }
-  Unused << rv;
 }
 
 void GeckoCameraVideoDecoder::onDecoderEOS() {
+  uint64_t decoderGeneration;
+  {
+    MutexAutoLock lock(mMutex);
+    if (mIsShutDown || mIgnoreCallbacks) {
+      return;
+    }
+    decoderGeneration = mDecoderGeneration;
+  }
+
   LOG("Decoder EOS");
 
   RefPtr<GeckoCameraVideoDecoder> self = this;
   nsresult rv = mTaskQueue->Dispatch(NS_NewRunnableFunction(
       "GeckoCameraVideoDecoder::onDecoderEOS",
-      [self]() {
+      [self, decoderGeneration]() {
+        {
+          MutexAutoLock lock(self->mMutex);
+          if (self->mIsShutDown || self->mIgnoreCallbacks ||
+              decoderGeneration != self->mDecoderGeneration) {
+            return;
+          }
+        }
         if (!self->mDrainPromise.IsEmpty()) {
           self->mDecoderDrained = true;
           self->DrainComplete();
@@ -305,7 +386,6 @@ void GeckoCameraVideoDecoder::onDecoderEOS() {
   if (NS_FAILED(rv)) {
     LOG("Couldn't dispatch decoder EOS");
   }
-  Unused << rv;
 }
 
 gecko::codec::CodecType GeckoCameraVideoDecoder::CodecTypeFromMime(
@@ -320,99 +400,189 @@ gecko::codec::CodecType GeckoCameraVideoDecoder::CodecTypeFromMime(
   return gecko::codec::VideoCodecUnknown;
 }
 
-MediaResult GeckoCameraVideoDecoder::CreateDecoder()
-{
+MediaResult GeckoCameraVideoDecoder::CreateDecoder() {
   gecko::codec::VideoDecoderMetadata metadata;
   memset(&metadata, 0, sizeof(metadata));
 
-  metadata.codecType = CodecTypeFromMime(mParams.mConfig.mMimeType);
+  metadata.codecType = CodecTypeFromMime(mInfo.mMimeType);
+  if (metadata.codecType == gecko::codec::VideoCodecUnknown) {
+    return MediaResult(NS_ERROR_DOM_MEDIA_NOT_SUPPORTED_ERR,
+                       RESULT_DETAIL("Unsupported codec"));
+  }
 
   metadata.width = mInfo.mImage.width;
   metadata.height = mInfo.mImage.height;
   metadata.framerate = 0;
 
-  if (mIsH264) {
+  if (mIsH264 && mInfo.mExtraData) {
     metadata.codecSpecific = mInfo.mExtraData->Elements();
     metadata.codecSpecificSize = mInfo.mExtraData->Length();
   }
 
-  if (!mCodecManager->createVideoDecoder(metadata.codecType, mDecoder)) {
+  std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+  if (!mCodecManager->createVideoDecoder(metadata.codecType, decoder) ||
+      !decoder) {
     LOG("Cannot create decoder");
     return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
                        RESULT_DETAIL("Create decoder failed"));
   }
 
-  if (!mDecoder->init(metadata)) {
+  if (!decoder->init(metadata)) {
     LOG("Cannot initialize decoder");
     return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
                        RESULT_DETAIL("Init decoder failed"));
   }
 
-  mDecoder->setListener(this);
+  decoder->setListener(this);
+  {
+    MutexAutoLock lock(mMutex);
+    mDecoder = std::move(decoder);
+  }
   return NS_OK;
 }
 
 void GeckoCameraVideoDecoder::ProcessDecode(
-    MediaRawData* aSample) {
+    MediaRawData* aSample,
+    const std::shared_ptr<DecodeStateAtomic>& aDecodeState) {
   MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
 
   if (mIsShutDown) {
+    aDecodeState->exchange(DecodeState::Idle);
     mDecodePromise.Reject(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
     return;
   }
 
   if (mError) {
+    aDecodeState->exchange(DecodeState::Idle);
     mDecodePromise.Reject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
     return;
   }
 
-  if (!mDecoder) {
+  std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+  {
+    MutexAutoLock lock(mMutex);
+    decoder = mDecoder;
+  }
+  if (!decoder) {
+    aDecodeState->exchange(DecodeState::Idle);
     mDecodePromise.Reject(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
     return;
   }
 
   if (mDecoderDrained) {
     LOG("Recreating decoder after drain");
-    std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+    mIgnoreCallbacks = true;
     {
       MutexAutoLock lock(mMutex);
+      ++mDecoderGeneration;
       decoder = mDecoder;
       mDecoder.reset();
       mInputFrames.clear();
       mReorderQueue.Clear();
     }
 
-    decoder->setListener(nullptr);
-    decoder->stop();
+    if (decoder) {
+      MutexAutoLock lock(mCodecControlMutex);
+      decoder->stop();
+      decoder->setListener(nullptr);
+    }
     mDecoderDrained = false;
 
     MediaResult rv = CreateDecoder();
+    mIgnoreCallbacks = false;
     if (NS_FAILED(rv)) {
       mError = true;
+      aDecodeState->exchange(DecodeState::Idle);
       mDecodePromise.Reject(rv, __func__);
       return;
     }
+
+    {
+      MutexAutoLock lock(mMutex);
+      decoder = mDecoder;
+    }
   }
 
+  const uint64_t timestamp =
+      static_cast<uint64_t>(aSample->mTime.ToMicroseconds());
   {
     MutexAutoLock lock(mMutex);
-    mInputFrames[aSample->mTime.ToMicroseconds()] = aSample;
+    mInputFrames.emplace(timestamp, aSample);
   }
 
+  // If decode blocks for more than a second, drain it from the command queue
+  // to release the full input queue.
+  const TimeDuration decodeTimeout = TimeDuration::FromMilliseconds(1000);
+  mDecodeTimer->WaitFor(decodeTimeout, __func__)
+      ->Then(
+          mCommandTaskQueue, __func__,
+          [self = RefPtr<GeckoCameraVideoDecoder>(this),
+           decodeState = aDecodeState]() {
+            MutexAutoLock controlLock(self->mCodecControlMutex);
+            if (!decodeState->compareExchange(DecodeState::Active,
+                                              DecodeState::TimedOut)) {
+              return;
+            }
+            LOGEX(self.get(), "Decode is blocked for too long");
+            self->mError = true;
+            std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+            {
+              MutexAutoLock lock(self->mMutex);
+              decoder = self->mDecoder;
+            }
+            if (!self->mIsShutDown && decoder) {
+              decoder->drain();
+            }
+          },
+          [] {});
+
   mDecoderDrained = false;
+  auto* inputHolder = new RefPtr<MediaRawData>(aSample);
   // Will block here if decode queue is full.
-  bool ok = mDecoder->decode(const_cast<uint8_t*>(aSample->Data()),
-      aSample->Size(),
-      aSample->mTime.ToMicroseconds(),
-      aSample->mKeyframe ? gecko::codec::KeyFrame : gecko::codec::DeltaFrame,
-      nullptr, nullptr);
+  bool ok = decoder->decode(
+      aSample->Data(), aSample->Size(), timestamp,
+      aSample->mKeyframe ? gecko::codec::KeyFrame
+                         : gecko::codec::DeltaFrame,
+      &GeckoCameraVideoDecoder::ReleaseInput, inputHolder);
+  if (!ok) {
+    delete inputHolder;
+  }
+  DecodeState decodeState = aDecodeState->exchange(DecodeState::Idle);
+  if (decodeState == DecodeState::TimedOut) {
+    // The timeout callback owns the codec-control mutex until it has marked
+    // the error and completed the unblock drain.
+    MutexAutoLock controlBarrier(mCodecControlMutex);
+  }
+
+  auto removeInputFrame = [this, timestamp, aSample]() {
+    MutexAutoLock lock(mMutex);
+    auto [begin, end] = mInputFrames.equal_range(timestamp);
+    for (auto iter = begin; iter != end; ++iter) {
+      if (iter->second == aSample) {
+        mInputFrames.erase(iter);
+        break;
+      }
+    }
+  };
+
   if (!ok) {
     LOG("Couldn't pass frame to decoder");
     NS_WARNING("Couldn't pass frame to decoder");
-    mDecodePromise.Reject(NS_ERROR_DOM_MEDIA_DECODE_ERR, __func__);
+    removeInputFrame();
+    mDecodePromise.Reject(
+        decodeState == DecodeState::TimedOut || mError
+            ? NS_ERROR_DOM_MEDIA_FATAL_ERR
+            : NS_ERROR_DOM_MEDIA_DECODE_ERR,
+        __func__);
     return;
   }
-  LOG("The frame %lld sent to the decoder", aSample->mTime.ToMicroseconds());
+  if (decodeState == DecodeState::TimedOut || mError) {
+    removeInputFrame();
+    mDecodePromise.Reject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+    return;
+  }
+  LOG("The frame %llu sent to the decoder",
+      static_cast<unsigned long long>(timestamp));
 
   MutexAutoLock lock(mMutex);
   LOG("%llu decoded frames queued",
@@ -422,6 +592,11 @@ void GeckoCameraVideoDecoder::ProcessDecode(
     results.AppendElement(mReorderQueue.Pop());
   }
   mDecodePromise.Resolve(std::move(results), __func__);
+}
+
+/* static */
+void GeckoCameraVideoDecoder::ReleaseInput(void* aData) {
+  delete static_cast<RefPtr<MediaRawData>*>(aData);
 }
 
 void GeckoCameraVideoDecoder::DrainComplete() {
@@ -443,3 +618,6 @@ void GeckoCameraVideoDecoder::DrainComplete() {
 }
 
 }  // namespace mozilla
+
+#undef LOG
+#undef LOGEX

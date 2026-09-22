@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Thu, 21 Oct 2021 12:35:53 +0000
+Subject: Route EmbedLite login prompts to their window. JB#55760
+
+Keep the upstream browser-element prompt interface so EmbedLite Components
+can route remote form prompts through their browsing contexts. Retain the
+window fallback for HTTP authentication. Contributes to OMP#JOLLA-418.
+
+Register Gecko's built-in login prompters for non-Sailfish applications
+only, leaving their contracts to the EmbedLite component on Sailfish.
+---
+ .../protocol/http/ParentChannelListener.cpp   |  2 +-
+ .../components/passwordmgr/components.conf    | 39 ++++++++++++-------
+ 2 files changed, 26 insertions(+), 15 deletions(-)
+
+diff --git a/netwerk/protocol/http/ParentChannelListener.cpp b/netwerk/protocol/http/ParentChannelListener.cpp
+index 356e504f7831..b846fc063872 100644
+--- a/netwerk/protocol/http/ParentChannelListener.cpp
++++ b/netwerk/protocol/http/ParentChannelListener.cpp
+@@ -255,7 +255,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
+ 
+   nsCOMPtr<nsPIDOMWindowOuter> window;
+   RefPtr<dom::Element> frame = mBrowsingContext->Top()->GetEmbedderElement();
+-  if (frame) window = frame->OwnerDoc()->GetWindow();
++  window = frame ? frame->OwnerDoc()->GetWindow() : mBrowsingContext->GetDOMWindow();
+ 
+   // Get an auth prompter for our window so that the parenting
+   // of the dialogs works as it should when using tabs.
+diff --git a/toolkit/components/passwordmgr/components.conf b/toolkit/components/passwordmgr/components.conf
+index 8768ff6629ef..336db420e353 100644
+--- a/toolkit/components/passwordmgr/components.conf
++++ b/toolkit/components/passwordmgr/components.conf
+@@ -11,24 +11,12 @@ Classes = [
+         'esModule': 'resource://gre/modules/LoginManager.sys.mjs',
+         'constructor': 'LoginManager',
+     },
+-    {
+-        'cid': '{749e62f4-60ae-4569-a8a2-de78b649660e}',
+-        'contract_ids': ['@mozilla.org/passwordmanager/authpromptfactory;1'],
+-        'esModule': 'resource://gre/modules/LoginManagerAuthPrompter.sys.mjs',
+-        'constructor': 'LoginManagerAuthPromptFactory',
+-    },
+     {
+         'cid': '{2bdac17c-53f1-4896-a521-682ccdeef3a8}',
+         'contract_ids': ['@mozilla.org/login-manager/autocompletesearch;1'],
+         'esModule': 'resource://gre/modules/LoginAutoComplete.sys.mjs',
+         'constructor': 'LoginAutoComplete',
+     },
+-    {
+-        'cid': '{8aa66d77-1bbb-45a6-991e-b8f47751c291}',
+-        'contract_ids': ['@mozilla.org/login-manager/authprompter;1'],
+-        'esModule': 'resource://gre/modules/LoginManagerAuthPrompter.sys.mjs',
+-        'constructor': 'LoginManagerAuthPrompter',
+-    },
+     {
+         'cid': '{0f2f347c-1e4f-40cc-8efd-792dea70a85e}',
+         'contract_ids': ['@mozilla.org/login-manager/loginInfo;1'],
+@@ -43,14 +31,37 @@ Classes = [
+     },
+ ]
+ 
+-if buildconfig.substs['MOZ_WIDGET_TOOLKIT'] not in ('android', 'uikit'):
+-     Classes += [
++if buildconfig.substs['MOZ_BUILD_APP'] != 'mobile/sailfishos':
++    Classes += [
++        {
++            'cid': '{749e62f4-60ae-4569-a8a2-de78b649660e}',
++            'contract_ids': ['@mozilla.org/passwordmanager/authpromptfactory;1'],
++            'esModule': 'resource://gre/modules/LoginManagerAuthPrompter.sys.mjs',
++            'constructor': 'LoginManagerAuthPromptFactory',
++        },
++        {
++            'cid': '{8aa66d77-1bbb-45a6-991e-b8f47751c291}',
++            'contract_ids': ['@mozilla.org/login-manager/authprompter;1'],
++            'esModule': 'resource://gre/modules/LoginManagerAuthPrompter.sys.mjs',
++            'constructor': 'LoginManagerAuthPrompter',
++        },
++    ]
++
++if (
++    buildconfig.substs['MOZ_BUILD_APP'] != 'mobile/sailfishos'
++    and buildconfig.substs['MOZ_WIDGET_TOOLKIT'] not in ('android', 'uikit')
++):
++    Classes += [
+         {
+             'cid': '{c47ff942-9678-44a5-bc9b-05e0d676c79c}',
+             'contract_ids': ['@mozilla.org/login-manager/prompter;1'],
+             'esModule': 'resource://gre/modules/LoginManagerPrompter.sys.mjs',
+             'constructor': 'LoginManagerPrompter',
+         },
++    ]
++
++if buildconfig.substs['MOZ_WIDGET_TOOLKIT'] not in ('android', 'uikit'):
++    Classes += [
+         {
+             'cid': '{dc185a77-ba88-4caa-8f16-465253f7599a}',
+             'contract_ids': [

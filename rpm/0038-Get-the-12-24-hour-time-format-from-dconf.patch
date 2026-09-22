@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Simo Piiroinen <simo.piiroinen@jollamobile.com>
+Date: Fri, 28 Aug 2020 12:33:28 +0300
+Subject: Get the 12/24-hour time format from dconf
+
+Sailfish stores its time-format choice under an underscore-containing dconf
+key that cannot be represented by GSettings schemas. Read that key directly,
+then fall back to Gecko's existing GSettings behavior when it is unavailable
+or invalid.
+
+Use ESR140's existing moz.configure dconf detection and add only the compile
+and libxul link flags still needed by the locale implementation.
+
+Fixes JB#50805
+
+Signed-off-by: Simo Piiroinen <simo.piiroinen@jollamobile.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ intl/locale/gtk/OSPreferences_gtk.cpp | 43 ++++++++++++++++++++++++++-
+ intl/locale/gtk/moz.build             |  3 ++
+ toolkit/library/moz.build             |  3 ++
+ 3 files changed, 48 insertions(+), 1 deletion(-)
+
+diff --git a/intl/locale/gtk/OSPreferences_gtk.cpp b/intl/locale/gtk/OSPreferences_gtk.cpp
+index a2cb588a89bb..6c1b8c355cc0 100644
+--- a/intl/locale/gtk/OSPreferences_gtk.cpp
++++ b/intl/locale/gtk/OSPreferences_gtk.cpp
+@@ -6,6 +6,14 @@
+ #include <locale.h>
+ #include "mozilla/LookAndFeel.h"
+ #include "mozilla/intl/Locale.h"
++
++#if defined(MOZ_ENABLE_DCONF)
++// External library symbols must retain their default visibility.
++#  pragma GCC visibility push(default)
++#  include <dconf.h>
++#  pragma GCC visibility pop
++#endif
++
+ #include "OSPreferences.h"
+ 
+ #include "nsServiceManagerUtils.h"
+@@ -42,6 +50,33 @@ bool OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList) {
+   return false;
+ }
+ 
++#if defined(MOZ_ENABLE_DCONF)
++static int HourCycleSailfish() {
++  int hourCycle = 0;
++  DConfClient* client = dconf_client_new();
++  if (!client) {
++    return hourCycle;
++  }
++
++  GVariant* value =
++      dconf_client_read(client, "/sailfish/i18n/lc_timeformat24h");
++  if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
++    const gchar* stringValue = g_variant_get_string(value, nullptr);
++    if (g_str_has_prefix(stringValue, "24")) {
++      hourCycle = 24;
++    } else if (g_str_has_prefix(stringValue, "12")) {
++      hourCycle = 12;
++    }
++  }
++
++  if (value) {
++    g_variant_unref(value);
++  }
++  g_object_unref(client);
++  return hourCycle;
++}
++#endif
++
+ /**
+  * Since Gtk does not provide a way to customize or format date/time patterns,
+  * we're reusing ICU data here, but we do modify it according to the only
+@@ -71,7 +106,13 @@ bool OSPreferences::ReadDateTimePattern(DateTimeFormatStyle aDateStyle,
+   }
+ 
+   // Customize the skeleton if necessary to reflect user's 12/24hr pref
+-  int hourCycle = LookAndFeel::GetInt(LookAndFeel::IntID::HourCycle);
++  int hourCycle = 0;
++#if defined(MOZ_ENABLE_DCONF)
++  hourCycle = HourCycleSailfish();
++#endif
++  if (!hourCycle) {
++    hourCycle = LookAndFeel::GetInt(LookAndFeel::IntID::HourCycle);
++  }
+   if (hourCycle == 12 || hourCycle == 24) {
+     OverrideSkeletonHourCycle(hourCycle == 24, skeleton);
+   }
+diff --git a/intl/locale/gtk/moz.build b/intl/locale/gtk/moz.build
+index ec451243ad4b..de78d82181bb 100644
+--- a/intl/locale/gtk/moz.build
++++ b/intl/locale/gtk/moz.build
+@@ -6,6 +6,9 @@ SOURCES += ["OSPreferences_gtk.cpp"]
+ 
+ CXXFLAGS += CONFIG["GLIB_CFLAGS"]
+ 
++if CONFIG["MOZ_ENABLE_DCONF"]:
++    CXXFLAGS += CONFIG["MOZ_DCONF_CFLAGS"]
++
+ FINAL_LIBRARY = "xul"
+ 
+ LOCAL_INCLUDES += [
+diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
+index 936b5416f31a..0222cc487730 100644
+--- a/toolkit/library/moz.build
++++ b/toolkit/library/moz.build
+@@ -321,6 +321,9 @@ if CONFIG["OS_ARCH"] == "OpenBSD":
+ if CONFIG["MOZ_ENABLE_DBUS"]:
+     OS_LIBS += CONFIG["MOZ_DBUS_LIBS"]
+ 
++if CONFIG["MOZ_ENABLE_DCONF"]:
++    OS_LIBS += CONFIG["MOZ_DCONF_LIBS"]
++
+ if CONFIG["MOZ_SYSTEM_LIBDRM"]:
+     OS_LIBS += CONFIG["MOZ_LIBDRM_LIBS"]
+ 

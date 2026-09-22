@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 5 Aug 2026 17:53:10 +0200
+Subject: Dispatch MDSM initialization without tail dispatch
+
+Use normal task-queue dispatch when EmbedLite initializes media outside an
+active XPCOM event-loop recursion, where no tail dispatcher is available.
+---
+ dom/media/MediaDecoderStateMachineBase.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/dom/media/MediaDecoderStateMachineBase.cpp b/dom/media/MediaDecoderStateMachineBase.cpp
+index 9ca7949c7c8c..4a4578d05fde 100644
+--- a/dom/media/MediaDecoderStateMachineBase.cpp
++++ b/dom/media/MediaDecoderStateMachineBase.cpp
+@@ -96,7 +96,13 @@ nsresult MediaDecoderStateMachineBase::Init(MediaDecoder* aDecoder) {
+   nsCOMPtr<nsIRunnable> r = NewRunnableMethod<RefPtr<MediaDecoder>>(
+       "MediaDecoderStateMachineBase::InitializationTask", this,
+       &MediaDecoderStateMachineBase::InitializationTask, aDecoder);
+-  mTaskQueue->DispatchStateChange(r.forget());
++  AbstractThread* currentThread = AbstractThread::GetCurrent();
++  if (currentThread && currentThread->IsTailDispatcherAvailable()) {
++    mTaskQueue->DispatchStateChange(r.forget());
++  } else {
++    nsresult rv = mTaskQueue->Dispatch(r.forget());
++    NS_ENSURE_SUCCESS(rv, rv);
++  }
+ 
+   // Connect mirrors.
+   aDecoder->CanonicalPlayState().ConnectMirror(&mPlayState);

@@ -25,8 +25,10 @@ class nsFilePicker final : public nsBaseFilePicker,
   NS_DECL_ISUPPORTS
   NS_DECL_NSIEMBEDMESSAGELISTENER
 
-  NS_IMETHOD Init(mozIDOMWindowProxy* aParent, const nsAString& aTitle,
-                  nsIFilePicker::Mode aMode) override;
+  NS_IMETHOD Init(mozilla::dom::BrowsingContext* aBrowsingContext,
+                  const nsAString& aTitle,
+                  nsIFilePicker::Mode aMode,
+                  nsISupports* aGlobal) override;
   NS_IMETHOD Open(nsIFilePickerShownCallback* aCallback) override;
   NS_IMETHOD AppendFilter(const nsAString& aTitle,
                           const nsAString& aFilter) override;
@@ -44,8 +46,6 @@ class nsFilePicker final : public nsBaseFilePicker,
 
  protected:
   ~nsFilePicker() override;
-
-  nsresult Show(nsIFilePicker::ResultCode* aReturn) override;
 
  private:
   nsresult EnsureWindowId(mozIDOMWindowProxy* aWindow);

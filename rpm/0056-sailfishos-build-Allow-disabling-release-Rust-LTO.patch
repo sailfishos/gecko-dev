@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 15:59:51 +0200
+Subject: [sailfishos][build] Allow disabling release Rust LTO
+
+Sailfish ARM cross-builds use a 32-bit Rust compiler. The final gkrust
+full-LTO process exceeds its address space even when the build host has
+ample physical memory, so provide a narrow make-time opt-out.
+---
+ config/makefiles/rust.mk | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
+index 01bd98193d77..0e6cb2be2883 100644
+--- a/config/makefiles/rust.mk
++++ b/config/makefiles/rust.mk
+@@ -110,6 +110,7 @@ endif
+ cargo_rustc_flags = $(CARGO_RUSTCFLAGS)
+ ifndef DEVELOPER_OPTIONS
+ ifndef MOZ_DEBUG_RUST
++ifndef MOZ_RUST_LTO_OFF
+ # Enable link-time optimization for release builds, but not when linking
+ # gkrust_gtest. And not when doing cross-language LTO.
+ ifndef MOZ_LTO_RUST_CROSS
+@@ -127,6 +128,7 @@ endif
+ endif
+ endif
+ endif
++endif
+ 
+ ifdef CARGO_INCREMENTAL
+ export CARGO_INCREMENTAL
+@@ -159,6 +161,10 @@ ifdef DEVELOPER_OPTIONS
+ rustflags_override += -Clto=off
+ endif
+ 
++ifdef MOZ_RUST_LTO_OFF
++rustflags_override += -Clto=off
++endif
++
+ ifneq (,$(or $(MOZ_USING_SCCACHE),$(MOZ_USING_BUILDCACHE)))
+ export RUSTC_WRAPPER=$(CCACHE)
+ endif

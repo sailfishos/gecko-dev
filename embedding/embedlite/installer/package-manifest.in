@@ -19,7 +19,7 @@
 [@AB_CD@]
 @RESPATH@/chrome/@AB_CD@@JAREXT@
 @RESPATH@/chrome/@AB_CD@.manifest
-@BINPATH@/update.locale
+@BINPATH@/default.locale
 #ifdef MOZ_UPDATER
 @BINPATH@/updater.ini
 #endif
@@ -38,10 +38,9 @@
 @BINPATH@/@DLL_PREFIX@dmd@DLL_SUFFIX@
 #endif
 @BINPATH@/@DLL_PREFIX@lgpllibs@DLL_SUFFIX@
-#ifdef MOZ_FFVPX
+@BINPATH@/@DLL_PREFIX@gkcodecs@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
-#endif
 @BINPATH@/@DLL_PREFIX@xul@DLL_SUFFIX@
 
 #ifndef CROSS_COMPILE
@@ -89,9 +88,13 @@
 
 ; Modules
 @BINPATH@/modules/*
+@BINPATH@/browser/modules/*
+@BINPATH@/moz-src/*
 @BINPATH@/actors/*
 
 ; [Browser Chrome Files]
+@BINPATH@/chrome/embedlitechrome@JAREXT@
+@BINPATH@/chrome/embedlitechrome.manifest
 @BINPATH@/chrome/toolkit@JAREXT@
 @BINPATH@/chrome/toolkit.manifest
 
@@ -140,6 +143,7 @@
 @BINPATH@/res/locale/layout/MediaDocument.properties
 @BINPATH@/res/locale/layout/xmlparser.properties
 @BINPATH@/res/locale/dom/dom.properties
+@BINPATH@/res/locale/necko/necko.properties
 @BINPATH@/res/fonts/*
 
 ; Content-accessible resources.
@@ -164,4 +168,3 @@
 #ifdef PKG_LOCALE_MANIFEST
 #include @PKG_LOCALE_MANIFEST@
 #endif
-

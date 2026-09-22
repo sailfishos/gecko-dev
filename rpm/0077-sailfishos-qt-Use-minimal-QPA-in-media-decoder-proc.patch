@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 9 Sep 2026 13:06:50 +0200
+Subject: [sailfishos][qt] Use minimal QPA in media decoder processes
+
+RDD and utility processes only need the Qt event dispatcher. Avoid
+opening a Wayland connection or initializing the GUI platform backend
+before their media sandbox starts.
+---
+ toolkit/xre/nsQAppInstance.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/toolkit/xre/nsQAppInstance.cpp b/toolkit/xre/nsQAppInstance.cpp
+index 9e7acb5955aa..3b160ca21745 100644
+--- a/toolkit/xre/nsQAppInstance.cpp
++++ b/toolkit/xre/nsQAppInstance.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include "nsQAppInstance.h"
+ #include "nsXPCOMPrivate.h"
++#include "nsXULAppAPI.h"
+ #include "prenv.h"
+ 
+ QGuiApplication *nsQAppInstance::sQAppInstance = nullptr;
+@@ -18,7 +19,8 @@ void nsQAppInstance::AddRef(int& aArgc, char** aArgv) {
+   if (qApp)
+     return;
+   if (!sQAppInstance) {
+-    if (PR_GetEnv("MOZ_HEADLESS")) {
++    if (PR_GetEnv("MOZ_HEADLESS") || XRE_IsRDDProcess() ||
++        XRE_IsUtilityProcess()) {
+       qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("minimal"));
+     }
+     mozilla::SetICUMemoryFunctions();

@@ -1,0 +1,199 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 5 Aug 2026 17:48:03 +0200
+Subject: [sailfishos][neterror] Support hosted error-page actors
+
+Use Gecko's net-error actors in hosted tabs without relying on a XUL browser
+element or Firefox-only remote chrome modules.
+
+Keep navigation, reload, certificate viewing and captive-portal handling on
+the hosted BrowsingContext. Presentation remains owned by EmbedLite
+Components.
+---
+ toolkit/actors/NetErrorChild.sys.mjs  |  9 ++--
+ toolkit/actors/NetErrorParent.sys.mjs | 61 +++++++++++++++++++++------
+ 2 files changed, 54 insertions(+), 16 deletions(-)
+
+diff --git a/toolkit/actors/NetErrorChild.sys.mjs b/toolkit/actors/NetErrorChild.sys.mjs
+index 433649097390..d00ef25b1ebd 100644
+--- a/toolkit/actors/NetErrorChild.sys.mjs
++++ b/toolkit/actors/NetErrorChild.sys.mjs
+@@ -2,15 +2,18 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
++import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
++
+ const lazy = {};
+ 
+ ChromeUtils.defineESModuleGetters(lazy, {
+-  AppInfo: "chrome://remote/content/shared/AppInfo.sys.mjs",
+   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
+ });
+ 
+ import { RemotePageChild } from "resource://gre/actors/RemotePageChild.sys.mjs";
+ 
++const FIREFOX_ID = "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}";
++
+ export class NetErrorChild extends RemotePageChild {
+   actorCreated() {
+     super.actorCreated();
+@@ -201,7 +204,7 @@ export class NetErrorChild extends RemotePageChild {
+   }
+ 
+   RPMIsFirefox() {
+-    return lazy.AppInfo.isFirefox;
++    return Services.appinfo.ID == FIREFOX_ID;
+   }
+ 
+   RPMHasConnectivity() {
+@@ -242,7 +245,7 @@ export class NetErrorChild extends RemotePageChild {
+   }
+ 
+   RPMShowOSXLocalNetworkPermissionWarning() {
+-    if (!lazy.AppInfo.isMac) {
++    if (AppConstants.platform != "macosx") {
+       return false;
+     }
+ 
+diff --git a/toolkit/actors/NetErrorParent.sys.mjs b/toolkit/actors/NetErrorParent.sys.mjs
+index 0ed7b63c280c..5bf1902ac52c 100644
+--- a/toolkit/actors/NetErrorParent.sys.mjs
++++ b/toolkit/actors/NetErrorParent.sys.mjs
+@@ -51,21 +51,29 @@ export class EscapablePageParent extends JSWindowActorParent {
+    * that has certificate errors, we can get them somewhere safe.
+    */
+   leaveErrorPage(browser, allowGoingBack = true) {
+-    if (!browser.canGoBack || !allowGoingBack) {
++    let browserCanNavigate =
++      typeof browser?.goBack == "function" &&
++      typeof browser?.fixupAndLoadURIString == "function";
++    let webNavigation = browserCanNavigate ? browser : this.browsingContext.top;
++    let canGoBack = browserCanNavigate
++      ? browser.canGoBack
++      : webNavigation.sessionHistory?.index > 0;
++
++    if (!canGoBack || !allowGoingBack) {
+       // If the unsafe page is the first or the only one in history, we need to
+       // go somewhere:
+       let safePage = "about:blank";
+ 
+       // Ideally we use the homepage...
+-      if (AppConstants.MOZ_BUILD_APP == "browser") {
++      if (AppConstants.MOZ_BUILD_APP == "browser" && browser) {
+         safePage = lazy.HomePage.getForErrorPage(browser.documentGlobal);
+       }
+-      browser.fixupAndLoadURIString(safePage, {
++      webNavigation.fixupAndLoadURIString(safePage, {
+         triggeringPrincipal:
+           Services.scriptSecurityManager.getSystemPrincipal(),
+       });
+     } else {
+-      browser.goBack();
++      webNavigation.goBack();
+     }
+   }
+ }
+@@ -86,6 +94,23 @@ export class NetErrorParent extends EscapablePageParent {
+     return this.browsingContext.top.embedderElement;
+   }
+ 
++  reloadErrorPage() {
++    let browser = this.browser;
++    if (browser?.reload) {
++      browser.reload();
++      return;
++    }
++
++    this.browsingContext.top.reload(Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
++  }
++
++  isShowingCertErrorPage(browser) {
++    let documentURI =
++      browser?.documentURI ??
++      this.browsingContext.top.currentWindowGlobal?.documentURI;
++    return documentURI?.spec.startsWith("about:certerror");
++  }
++
+   hasChangedCertPrefs() {
+     let prefSSLImpact = PREF_SSL_IMPACT_ROOTS.reduce((prefs, root) => {
+       return prefs.concat(Services.prefs.getChildList(root));
+@@ -120,7 +145,7 @@ export class NetErrorParent extends EscapablePageParent {
+ 
+     request.addEventListener("error", () => {
+       // Make sure the user is still on the cert error page.
+-      if (!browser.documentURI.spec.startsWith("about:certerror")) {
++      if (!this.isShowingCertErrorPage(browser)) {
+         return;
+       }
+ 
+@@ -153,8 +178,8 @@ export class NetErrorParent extends EscapablePageParent {
+             lazy.BrowserUtils.promiseObserved(
+               "psm:enterprise-certs-imported"
+             ).then(() => {
+-              if (browser.documentURI.spec.startsWith("about:certerror")) {
+-                browser.reload();
++              if (this.isShowingCertErrorPage(browser)) {
++                this.reloadErrorPage();
+               }
+             });
+ 
+@@ -170,7 +195,7 @@ export class NetErrorParent extends EscapablePageParent {
+           }
+         } else {
+           // Need to reload the page to make sure network code picks up the canary issuer pref.
+-          browser.reload();
++          this.reloadErrorPage();
+         }
+       }
+     });
+@@ -190,7 +215,8 @@ export class NetErrorParent extends EscapablePageParent {
+     let offlinePagePath = `chrome://global/content/neterror/supportpages/${supportPageSlug}.html`;
+     let triggeringPrincipal =
+       Services.scriptSecurityManager.getSystemPrincipal();
+-    this.browser.loadURI(Services.io.newURI(offlinePagePath), {
++    let webNavigation = this.browser || this.browsingContext.top;
++    webNavigation.loadURI(Services.io.newURI(offlinePagePath), {
+       triggeringPrincipal,
+     });
+   }
+@@ -200,10 +226,10 @@ export class NetErrorParent extends EscapablePageParent {
+       case "Browser:EnableOnlineMode":
+         // Reset network state and refresh the page.
+         Services.io.offline = false;
+-        this.browser.reload();
++        this.reloadErrorPage();
+         break;
+       case "Browser:OpenCaptivePortalPage":
+-        this.browser.documentGlobal.CaptivePortalWatcher.ensureCaptivePortalTab();
++        this.browser?.documentGlobal.CaptivePortalWatcher?.ensureCaptivePortalTab();
+         break;
+       case "Browser:PrimeMitm":
+         this.primeMitm(this.browser);
+@@ -219,7 +245,7 @@ export class NetErrorParent extends EscapablePageParent {
+         for (let prefName of prefSSLImpact) {
+           Services.prefs.clearUserPref(prefName);
+         }
+-        this.browser.reload();
++        this.reloadErrorPage();
+         break;
+       }
+       case "Browser:SSLErrorGoBack":
+@@ -245,7 +271,16 @@ export class NetErrorParent extends EscapablePageParent {
+             certsStringURL = certsStringURL.join("&");
+             let url = `about:certificate?${certsStringURL}`;
+ 
+-            let window = this.browser.documentGlobal;
++            let browser = this.browser;
++            if (!browser) {
++              this.browsingContext.top.loadURI(Services.io.newURI(url), {
++                triggeringPrincipal:
++                  Services.scriptSecurityManager.getSystemPrincipal(),
++              });
++              break;
++            }
++
++            let window = browser.documentGlobal;
+             if (AppConstants.MOZ_BUILD_APP === "browser") {
+               window.switchToTabHavingURI(url, true, {});
+             } else {

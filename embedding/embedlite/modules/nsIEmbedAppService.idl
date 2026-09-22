@@ -26,14 +26,20 @@ interface nsIEmbedMessageListener : nsISupports
     void onMessageReceived(in string messageName, in wstring message);
 };
 
-[scriptable, uuid(5ef6fb02-68cd-4bf8-b2b1-1a469bb01937)]
+[scriptable, uuid(87df698a-488f-4e73-9b03-b52e417cff1d)]
 interface nsIEmbedAppService : nsISupports
 {
     // Get Embed View ID by DOMWindow
     void getIDByWindow(in mozIDOMWindowProxy aWindow, [retval] out uint32_t aId);
-    // Get Embed View ID by BrowsingContext
     void getIDByBrowsingContext(in BrowsingContext aBrowsingContext,
                                 [retval] out uint32_t aId);
+    [implicit_jscontext]
+    Promise asyncChromeTabBeforeUnloadCheck(
+        in BrowsingContext aBrowsingContext,
+        in AString aTitle,
+        in AString aText,
+        in AString aLeaveLabel,
+        in AString aStayLabel);
     // Send JSON Message to Embed View with related View ID
     void sendAsyncMessage(in uint32_t aId, in wstring messageName, in wstring message);
     void sendSyncMessage(in uint32_t aId, in wstring messageName, in wstring message,
@@ -56,4 +62,15 @@ interface nsIEmbedAppService : nsISupports
     // Not sure how else to add event listener from js component without browser
     void chromeEventHandler(in mozIDOMWindowProxy aWindow, [retval] out EventTarget eventHandler);
     void getAnyEmbedWindow([optional] in boolean aActive, [retval] out mozIDOMWindowProxy embedWindow);
+};
+
+/**
+ * Chrome-hosted extensions kept separate from nsIEmbedAppService so that
+ * adding logical-tab support does not change its shipped vtable.
+ */
+[scriptable, uuid(23686c7c-9a12-43db-9731-b298717b5a0f)]
+interface nsIEmbedChromeAppService : nsISupports
+{
+    BrowsingContext getChromeTabBrowsingContext(in uint32_t aWindowId,
+                                                 in AString aTabId);
 };

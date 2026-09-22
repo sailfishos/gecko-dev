@@ -8,17 +8,27 @@
 
 #include "nsBaseDragService.h"
 
-class nsDragService final : public nsBaseDragService {
+class nsDragSession final : public nsBaseDragSession {
  public:
-  nsDragService();
+  nsDragSession() = default;
 
   MOZ_CAN_RUN_SCRIPT nsresult InvokeDragSessionImpl(
-      nsIArray* aTransferableArray,
+      nsIWidget* aWidget, nsIArray* aTransferableArray,
       const mozilla::Maybe<mozilla::CSSIntRegion>& aRegion,
       uint32_t aActionType) override;
 
  protected:
+  ~nsDragSession() override = default;
+};
+
+class nsDragService final : public nsBaseDragService {
+ public:
+  nsDragService();
+
+ protected:
   ~nsDragService() override;
+
+  already_AddRefed<nsIDragSession> CreateDragSession() override;
 };
 
 #endif  // nsDragService_h__

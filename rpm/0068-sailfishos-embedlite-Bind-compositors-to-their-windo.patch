@@ -1,0 +1,190 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 17 Aug 2026 13:39:01 +0200
+Subject: [sailfishos][embedlite] Bind compositors to their windows
+
+Same-process EmbedLite compositor creation used a zero window ID and
+resolved it through the last registered window. With multiple browser
+windows, two compositor bridges could bind to the same window and leave the
+other without frame delivery.
+
+Capture the originating EmbedLite window ID in its compositor widget and
+pass the widget through the same-process parent factory so each bridge binds
+to the correct window.
+---
+ gfx/ipc/InProcessCompositorSession.cpp     |  2 +-
+ gfx/layers/ipc/CompositorManagerParent.cpp | 26 ++++++++++++++--------
+ gfx/layers/ipc/CompositorManagerParent.h   |  7 +++++-
+ widget/EmbedLiteCompositorWidget.cpp       |  9 ++++++--
+ widget/EmbedLiteCompositorWidget.h         | 12 +++++++++-
+ widget/InProcessCompositorWidget.cpp       |  4 +++-
+ 6 files changed, 45 insertions(+), 15 deletions(-)
+
+diff --git a/gfx/ipc/InProcessCompositorSession.cpp b/gfx/ipc/InProcessCompositorSession.cpp
+index 3e8929eecd13..f40fbb085c7a 100644
+--- a/gfx/ipc/InProcessCompositorSession.cpp
++++ b/gfx/ipc/InProcessCompositorSession.cpp
+@@ -42,7 +42,7 @@ RefPtr<InProcessCompositorSession> InProcessCompositorSession::Create(
+   RefPtr<CompositorBridgeParent> parent =
+       CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+           aScale, aOptions, aUseExternalSurfaceSize, aSurfaceSize,
+-          aInnerWindowId);
++          aInnerWindowId, widget.get());
+   MOZ_ASSERT(parent);
+   parent->InitSameProcess(widget, aRootLayerTreeId);
+ 
+diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
+index 67b918066c01..50f5e356aa8c 100644
+--- a/gfx/layers/ipc/CompositorManagerParent.cpp
++++ b/gfx/layers/ipc/CompositorManagerParent.cpp
+@@ -17,6 +17,7 @@
+ 
+ #if defined(MOZ_EMBEDLITE)
+ #  include "mozilla/embedlite/EmbedLiteCompositorBridgeParent.h"
++#  include "mozilla/widget/EmbedLiteCompositorWidget.h"
+ #endif
+ 
+ namespace mozilla {
+@@ -81,7 +82,7 @@ already_AddRefed<CompositorBridgeParent>
+ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+     CSSToLayoutDeviceScale aScale, const CompositorOptions& aOptions,
+     bool aUseExternalSurfaceSize, const gfx::IntSize& aSurfaceSize,
+-    uint64_t aInnerWindowId) {
++    uint64_t aInnerWindowId, widget::CompositorWidget* aWidget) {
+   MOZ_ASSERT(XRE_IsParentProcess());
+   MOZ_ASSERT(NS_IsMainThread());
+ 
+@@ -108,16 +109,23 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+   TimeDuration vsyncRate =
+       gfxPlatform::GetPlatform()->GetGlobalVsyncDispatcher()->GetVsyncRate();
+ 
+-  RefPtr<CompositorBridgeParent> bridge =
++  RefPtr<CompositorBridgeParent> bridge;
+ #if defined(MOZ_EMBEDLITE)
+-      new mozilla::embedlite::EmbedLiteCompositorBridgeParent(
+-          0, sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
+-          aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
+-#else
+-      new CompositorBridgeParent(
+-          sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
+-          aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
++  widget::EmbedLiteCompositorWidget* embedLiteWidget =
++      aWidget ? aWidget->AsEmbedLite() : nullptr;
++  MOZ_RELEASE_ASSERT(!aUseExternalSurfaceSize || embedLiteWidget);
++  if (embedLiteWidget) {
++    bridge = new mozilla::embedlite::EmbedLiteCompositorBridgeParent(
++        embedLiteWidget->WindowId(), sInstance, /* aNamespace */ 0, aScale,
++        vsyncRate, aOptions, aUseExternalSurfaceSize, aSurfaceSize,
++        aInnerWindowId);
++  } else
+ #endif
++  {
++    bridge = new CompositorBridgeParent(
++        sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
++        aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
++  }
+ 
+   sInstance->mPendingCompositorBridges.AppendElement(bridge);
+   return bridge.forget();
+diff --git a/gfx/layers/ipc/CompositorManagerParent.h b/gfx/layers/ipc/CompositorManagerParent.h
+index 849427279a09..a01eb5597332 100644
+--- a/gfx/layers/ipc/CompositorManagerParent.h
++++ b/gfx/layers/ipc/CompositorManagerParent.h
+@@ -20,6 +20,10 @@ namespace gfx {
+ class SourceSurfaceSharedData;
+ }
+ 
++namespace widget {
++class CompositorWidget;
++}
++
+ namespace layers {
+ 
+ class CompositorBridgeParent;
+@@ -43,7 +47,8 @@ class CompositorManagerParent final : public PCompositorManagerParent {
+                                           const CompositorOptions& aOptions,
+                                           bool aUseExternalSurfaceSize,
+                                           const gfx::IntSize& aSurfaceSize,
+-                                          uint64_t aInnerWindowId);
++                                          uint64_t aInnerWindowId,
++                                          widget::CompositorWidget* aWidget);
+ 
+   static void WaitForSharedSurface(const wr::ExternalImageId& aId);
+ 
+diff --git a/widget/EmbedLiteCompositorWidget.cpp b/widget/EmbedLiteCompositorWidget.cpp
+index 7c4841a45af3..fd9da61ae3e0 100644
+--- a/widget/EmbedLiteCompositorWidget.cpp
++++ b/widget/EmbedLiteCompositorWidget.cpp
+@@ -6,10 +6,15 @@
+ 
+ #include "EmbedLiteCompositorWidget.h"
+ 
++#include "mozilla/embedlite/nsWindow.h"
++
+ namespace mozilla::widget {
+ 
+ EmbedLiteCompositorWidget::EmbedLiteCompositorWidget(
+-    const layers::CompositorOptions& aOptions, nsBaseWidget* aWidget)
+-    : InProcessCompositorWidget(aOptions, aWidget) {}
++    const layers::CompositorOptions& aOptions, embedlite::nsWindow* aWidget)
++    : InProcessCompositorWidget(aOptions, aWidget),
++      mWindowId(aWidget->GetUniqueID()) {
++  MOZ_RELEASE_ASSERT(mWindowId);
++}
+ 
+ }  // namespace mozilla::widget
+diff --git a/widget/EmbedLiteCompositorWidget.h b/widget/EmbedLiteCompositorWidget.h
+index 4ddbc4c90b50..1ab984c16666 100644
+--- a/widget/EmbedLiteCompositorWidget.h
++++ b/widget/EmbedLiteCompositorWidget.h
+@@ -7,17 +7,27 @@
+ #ifndef mozilla_widget_EmbedLiteCompositorWidget_h__
+ #define mozilla_widget_EmbedLiteCompositorWidget_h__
+ 
++#include <stdint.h>
++
+ #include "mozilla/widget/InProcessCompositorWidget.h"
+ 
++namespace mozilla::embedlite {
++class nsWindow;
++}
++
+ namespace mozilla::widget {
+ 
+ class EmbedLiteCompositorWidget final : public InProcessCompositorWidget {
+  public:
+   explicit EmbedLiteCompositorWidget(
+-      const layers::CompositorOptions& aOptions, nsBaseWidget* aWidget);
++      const layers::CompositorOptions& aOptions, embedlite::nsWindow* aWidget);
+ 
+   EmbedLiteCompositorWidget* AsEmbedLite() override { return this; }
+   bool IsEmbedLiteOffscreen() const override { return true; }
++  uint32_t WindowId() const { return mWindowId; }
++
++ private:
++  const uint32_t mWindowId;
+ };
+ 
+ }  // namespace mozilla::widget
+diff --git a/widget/InProcessCompositorWidget.cpp b/widget/InProcessCompositorWidget.cpp
+index a962a3e03350..56bdddf22324 100644
+--- a/widget/InProcessCompositorWidget.cpp
++++ b/widget/InProcessCompositorWidget.cpp
+@@ -6,6 +6,7 @@
+ 
+ #ifdef MOZ_EMBEDLITE
+ #  include "EmbedLiteCompositorWidget.h"
++#  include "mozilla/embedlite/nsWindow.h"
+ #endif
+ #include "mozilla/VsyncDispatcher.h"
+ #include "mozilla/layers/NativeLayer.h"
+@@ -34,7 +35,8 @@ RefPtr<CompositorWidget> CompositorWidget::CreateLocal(
+   MOZ_RELEASE_ASSERT(widget);
+ #ifdef MOZ_EMBEDLITE
+   if (aUseExternalSurfaceSize) {
+-    return new EmbedLiteCompositorWidget(aOptions, widget);
++    auto* embedLiteWindow = static_cast<embedlite::nsWindow*>(widget);
++    return new EmbedLiteCompositorWidget(aOptions, embedLiteWindow);
+   }
+ #endif
+   return new InProcessCompositorWidget(aOptions, widget);

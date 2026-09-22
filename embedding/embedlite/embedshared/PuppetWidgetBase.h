@@ -8,7 +8,8 @@
 #ifndef mozilla_embedlite_PuppetWidgetBase_h__
 #define mozilla_embedlite_PuppetWidgetBase_h__
 
-#include "nsBaseWidget.h"
+#include "nsIWidget.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
 
@@ -21,9 +22,9 @@ public:
   virtual void WidgetRotationChanged(const mozilla::ScreenRotation&) {};
 };
 
-class PuppetWidgetBase : public nsBaseWidget
+class PuppetWidgetBase : public nsIWidget
 {
-  typedef nsBaseWidget Base;
+  typedef nsIWidget Base;
 
   // The width and height of the "widget" are clamped to this.
   static const size_t kMaxDimension;
@@ -33,11 +34,10 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  using nsBaseWidget::Create; // for Create signature not overridden here
+  using nsIWidget::Create; // for Create signature not overridden here
   [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
-                                       nsNativeWidget    aNativeParent,
                                        const LayoutDeviceIntRect& aRect,
-                                       widget::InitData* aInitData = nullptr) override;
+                                       const widget::InitData& aInitData) override;
 
   virtual void Destroy() override;
 
@@ -47,11 +47,10 @@ public:
 
   virtual void ConstrainPosition(DesktopIntPoint& aPoint) override;
 
-  virtual void Move(double aX, double aY) override;
+  virtual void Move(const DesktopPoint& aPoint) override;
 
-  virtual void Resize(double aWidth, double aHeight, bool aRepaint) override;
-  virtual void Resize(double aX, double aY, double aWidth, double aHeight,
-                      bool aRepaint) override;
+  virtual void Resize(const DesktopSize& aSize, bool aRepaint) override;
+  virtual void Resize(const DesktopRect& aRect, bool aRepaint) override;
 
   virtual void Enable(bool aState) override;
   virtual bool IsEnabled() const override;
@@ -63,23 +62,23 @@ public:
   virtual nsresult SetTitle(const nsAString& aTitle) override;
 
   virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override;
+  virtual LayoutDeviceIntRect GetBounds() override { return mBounds; }
+  virtual float GetDPI() override;
+  virtual double GetDefaultScaleInternal() override;
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 
-  virtual void SetParent(nsIWidget* aNewParent) override;
-  virtual nsIWidget* GetParent(void) override;
-
   virtual void CaptureRollupEvents(bool aDoCapture) override;
-
-  virtual void ReparentNativeWidget(nsIWidget* aNewParent) override;
 
   void SetRotation(mozilla::ScreenRotation);
   void SetMargins(const LayoutDeviceIntMargin& margins);
   void UpdateBounds(bool aRepaint);
-  virtual mozilla::ScreenIntMargin GetSafeAreaInsets() const override;
-  void SetSafeAreaInsets(const mozilla::ScreenIntMargin& aSafeAreaInsets);
+  virtual mozilla::LayoutDeviceIntMargin GetSafeAreaInsets() const override;
+  void SetSafeAreaInsets(
+      const mozilla::LayoutDeviceIntMargin& aSafeAreaInsets);
   void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
+  void NotifyBackingScaleFactorChanged();
 
   virtual WindowRenderer* GetWindowRenderer() override;
 
@@ -89,6 +88,8 @@ public:
 
 protected:
   virtual ~PuppetWidgetBase() override;
+
+  void DidClearParent(nsIWidget* aOldParent) override;
 
   typedef nsTArray<PuppetWidgetBase*> ChildrenArray;
   typedef nsTArray<EmbedLitePuppetWidgetObserver*> ObserverArray;
@@ -104,14 +105,33 @@ protected:
   ChildrenArray mChildren;
   ObserverArray mObservers;
 
-  PuppetWidgetBase* mParent;
   mozilla::ScreenRotation mRotation;
+  LayoutDeviceIntRect mBounds;
   LayoutDeviceIntRect mNaturalBounds;
   LayoutDeviceIntMargin mMargins;
-  mozilla::ScreenIntMargin mSafeAreaInsets;
+  mozilla::LayoutDeviceIntMargin mSafeAreaInsets;
 
 private:
+  class WidgetPaintTask final : public Runnable
+  {
+  public:
+    NS_DECL_NSIRUNNABLE
+
+    explicit WidgetPaintTask(PuppetWidgetBase* aWidget)
+      : Runnable("PuppetWidgetBase::WidgetPaintTask")
+      , mWidget(aWidget)
+    {
+    }
+
+    void Revoke() { mWidget = nullptr; }
+
+  private:
+    PuppetWidgetBase* mWidget;
+  };
+
+  void Paint();
   bool IsTopLevel();
+  nsRevocableEventPtr<WidgetPaintTask> mWidgetPaintTask;
   nsSizeMode mSizeMode;
 };
 

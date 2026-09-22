@@ -23,16 +23,42 @@
 
 using namespace mozilla;
 
+static Result<nsCOMPtr<nsISupports>, nsresult>
+CreateTextData(const nsAString& aData)
+{
+  nsresult rv;
+  nsCOMPtr<nsISupportsString> dataWrapper =
+    do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID, &rv);
+  if (NS_FAILED(rv)) {
+    return Err(rv);
+  }
+
+  rv = dataWrapper->SetData(aData);
+  if (NS_FAILED(rv)) {
+    return Err(rv);
+  }
+
+  return nsCOMPtr<nsISupports>(std::move(dataWrapper));
+}
+
 struct nsEmbedClipboard::PendingAsyncGetData {
-  nsCOMPtr<nsITransferable> mTransferable;
-  MozPromiseHolder<GenericPromise> mPromise;
+  explicit PendingAsyncGetData(GetNativeDataCallback&& aCallback)
+    : mCallback(std::move(aCallback))
+  {
+  }
+
+  GetNativeDataCallback mCallback;
 };
 
-NS_IMPL_ISUPPORTS_INHERITED(nsEmbedClipboard, ClipboardSetDataHelper,
+NS_IMPL_ISUPPORTS_INHERITED(nsEmbedClipboard, nsBaseClipboard,
                             nsIObserver)
 
 nsEmbedClipboard::nsEmbedClipboard()
-  : ClipboardSetDataHelper()
+  : nsBaseClipboard(mozilla::dom::ClipboardCapabilities(
+      false /* supportsSelectionClipboard */,
+      false /* supportsFindClipboard */,
+      false /* supportsSelectionCache */))
+  , mSequenceNumber(0)
   , mModalDepth(0)
   , mWaitingForClipboardData(false)
   , mActive(true)
@@ -54,11 +80,11 @@ nsEmbedClipboard::~nsEmbedClipboard()
 
 NS_IMETHODIMP
 nsEmbedClipboard::SetNativeClipboardData(nsITransferable* aTransferable,
-                                         nsIClipboardOwner* anOwner,
-                                         int32_t aWhichClipboard)
+                                         ClipboardType aWhichClipboard)
 {
-  if (aWhichClipboard != kGlobalClipboard)
-    return NS_ERROR_NOT_IMPLEMENTED;
+  MOZ_DIAGNOSTIC_ASSERT(aTransferable);
+  MOZ_DIAGNOSTIC_ASSERT(
+    nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
 
   nsCOMPtr<nsISupports> tmp;
   nsresult rv  = aTransferable->GetTransferData(kTextMime, getter_AddRefs(tmp));
@@ -80,25 +106,40 @@ nsEmbedClipboard::SetNativeClipboardData(nsITransferable* aTransferable,
 
   json->CreateJSON(root, message);
   // Possible we can avoid json stuff for this case and send uri directly
-  mObserverService->NotifyObservers(nullptr, "clipboard:setdata", message.get());
+  rv = mObserverService->NotifyObservers(nullptr, "clipboard:setdata",
+                                         message.get());
+  NS_ENSURE_SUCCESS(rv, rv);
+  ++mSequenceNumber;
 
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsEmbedClipboard::GetData(nsITransferable* aTransferable, int32_t aWhichClipboard)
+Result<nsCOMPtr<nsISupports>, nsresult>
+nsEmbedClipboard::GetNativeClipboardData(const nsACString& aFlavor,
+                                         ClipboardType aWhichClipboard,
+                                         uint64_t aThreshold)
 {
-  if (aWhichClipboard != kGlobalClipboard)
-    return NS_ERROR_NOT_IMPLEMENTED;
+  MOZ_DIAGNOSTIC_ASSERT(
+    nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
+
+  if (!aFlavor.EqualsLiteral(kTextMime)) {
+    return nsCOMPtr<nsISupports>{};
+  }
 
   CancelPendingAsyncGetData(NS_ERROR_ABORT);
 
+  const int origModalDepth = mModalDepth;
   nsresult rv = RequestClipboardData();
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_FAILED(rv)) {
+    return Err(rv);
+  }
 
-  int origModalDepth = mModalDepth;
   nsCOMPtr<nsIThread> thread;
-  NS_GetCurrentThread(getter_AddRefs(thread));
+  rv = NS_GetCurrentThread(getter_AddRefs(thread));
+  if (NS_FAILED(rv)) {
+    StopObservingClipboardData();
+    return Err(rv);
+  }
   while (mActive && mModalDepth == origModalDepth && NS_SUCCEEDED(rv)) {
     bool processedEvent;
     rv = thread->ProcessNextEvent(true, &processedEvent);
@@ -107,13 +148,22 @@ nsEmbedClipboard::GetData(nsITransferable* aTransferable, int32_t aWhichClipboar
     }
   }
 
-  if (mActive) {
-    rv = SetTransferableText(aTransferable, mBuffer);
-    NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_FAILED(rv)) {
+    StopObservingClipboardData();
+    return Err(rv);
+  }
+  if (!mActive) {
+    return Err(NS_ERROR_ABORT);
+  }
+  if (aThreshold &&
+      uint64_t(mBuffer.Length()) * sizeof(char16_t) > aThreshold) {
     mBuffer.Truncate();
+    return Err(NS_ERROR_CLIPBOARD_TOO_BIG);
   }
 
-  return NS_OK;
+  auto result = CreateTextData(mBuffer);
+  mBuffer.Truncate();
+  return result;
 }
 
 NS_IMETHODIMP
@@ -137,19 +187,27 @@ nsEmbedClipboard::Observe(nsISupports *aSubject, const char *aTopic, const char1
     return NS_OK;
 }
 
-NS_IMETHODIMP
-nsEmbedClipboard::HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard, bool* aHasText)
+Result<bool, nsresult>
+nsEmbedClipboard::HasNativeClipboardDataMatchingFlavors(
+    const nsTArray<nsCString>& aFlavorList,
+    ClipboardType aWhichClipboard)
 {
-  NS_ENSURE_ARG_POINTER(aHasText);
-  *aHasText = true;
-  return NS_OK;
+  MOZ_DIAGNOSTIC_ASSERT(
+    nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
+
+  for (const auto& flavor : aFlavorList) {
+    if (flavor.EqualsLiteral(kTextMime)) {
+      return true;
+    }
+  }
+  return false;
 }
 
-NS_IMETHODIMP
-nsEmbedClipboard::EmptyClipboard(int32_t aWhichClipboard)
+nsresult
+nsEmbedClipboard::EmptyNativeClipboardData(ClipboardType aWhichClipboard)
 {
-  if (aWhichClipboard != kGlobalClipboard)
-    return NS_ERROR_NOT_IMPLEMENTED;
+  MOZ_DIAGNOSTIC_ASSERT(
+    nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
 
   nsString message;
   nsCOMPtr<nsIEmbedLiteJSON> json = do_GetService("@mozilla.org/embedlite-json;1");
@@ -159,61 +217,46 @@ nsEmbedClipboard::EmptyClipboard(int32_t aWhichClipboard)
   root->SetPropertyAsBool(u"private"_ns, false);
 
   json->CreateJSON(root, message);
-  mObserverService->NotifyObservers(nullptr, "clipboard:setdata", message.get());
+  nsresult rv = mObserverService->NotifyObservers(
+    nullptr, "clipboard:setdata", message.get());
+  NS_ENSURE_SUCCESS(rv, rv);
+
   mBuffer.Truncate();
+  ++mSequenceNumber;
 
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsEmbedClipboard::IsClipboardTypeSupported(int32_t aWhichClipboard, bool* _retval)
+Result<int32_t, nsresult>
+nsEmbedClipboard::GetNativeClipboardSequenceNumber(
+    ClipboardType aWhichClipboard)
 {
-  NS_ENSURE_ARG_POINTER(_retval);
-  *_retval = aWhichClipboard == kGlobalClipboard;
-  return NS_OK;
+  MOZ_DIAGNOSTIC_ASSERT(
+    nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
+  return mSequenceNumber;
 }
 
-RefPtr<GenericPromise>
-nsEmbedClipboard::AsyncGetData(nsITransferable* aTransferable, int32_t aWhichClipboard)
+void
+nsEmbedClipboard::AsyncGetNativeClipboardData(
+    const nsACString& aFlavor, ClipboardType aWhichClipboard,
+    GetNativeDataCallback&& aCallback)
 {
-  if (aWhichClipboard != kGlobalClipboard) {
-    return GenericPromise::CreateAndReject(NS_ERROR_NOT_IMPLEMENTED, __func__);
-  }
-  if (!aTransferable) {
-    return GenericPromise::CreateAndReject(NS_ERROR_INVALID_ARG, __func__);
-  }
+  MOZ_DIAGNOSTIC_ASSERT(
+    nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
 
   CancelPendingAsyncGetData(NS_ERROR_ABORT);
-  mPendingAsyncGetData = MakeUnique<PendingAsyncGetData>();
-  mPendingAsyncGetData->mTransferable = aTransferable;
+  if (!aFlavor.EqualsLiteral(kTextMime)) {
+    aCallback(nsCOMPtr<nsISupports>{});
+    return;
+  }
 
-  RefPtr<GenericPromise> promise =
-    mPendingAsyncGetData->mPromise.Ensure(__func__);
+  mPendingAsyncGetData =
+    MakeUnique<PendingAsyncGetData>(std::move(aCallback));
 
   nsresult rv = RequestClipboardData();
   if (NS_FAILED(rv)) {
-    mPendingAsyncGetData->mPromise.Reject(rv, __func__);
-    mPendingAsyncGetData = nullptr;
+    CancelPendingAsyncGetData(rv);
   }
-
-  return promise;
-}
-
-RefPtr<DataFlavorsPromise>
-nsEmbedClipboard::AsyncHasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList,
-                                              int32_t aWhichClipboard)
-{
-  nsTArray<nsCString> results;
-  for (const auto& flavor : aFlavorList) {
-    bool hasMatchingFlavor = false;
-    nsresult rv = HasDataMatchingFlavors(AutoTArray<nsCString, 1>{flavor},
-                                         aWhichClipboard, &hasMatchingFlavor);
-    if (NS_SUCCEEDED(rv) && hasMatchingFlavor) {
-      results.AppendElement(flavor);
-    }
-  }
-
-  return DataFlavorsPromise::CreateAndResolve(std::move(results), __func__);
 }
 
 nsresult
@@ -256,42 +299,13 @@ nsEmbedClipboard::CancelPendingAsyncGetData(nsresult aReason)
     return;
   }
 
-  mPendingAsyncGetData->mPromise.Reject(aReason, __func__);
-  mPendingAsyncGetData = nullptr;
+  UniquePtr<PendingAsyncGetData> pending = std::move(mPendingAsyncGetData);
+  pending->mCallback(Err(aReason));
 }
 
 void
 nsEmbedClipboard::CompletePendingAsyncGetData(const nsAString& aData)
 {
   UniquePtr<PendingAsyncGetData> pending = std::move(mPendingAsyncGetData);
-  nsresult rv = SetTransferableText(pending->mTransferable, aData);
-  pending->mTransferable = nullptr;
-
-  if (NS_FAILED(rv)) {
-    pending->mPromise.Reject(rv, __func__);
-  } else {
-    pending->mPromise.Resolve(true, __func__);
-  }
-}
-
-nsresult
-nsEmbedClipboard::SetTransferableText(nsITransferable* aTransferable,
-                                      const nsAString& aData)
-{
-  NS_ENSURE_ARG(aTransferable);
-
-  nsresult rv;
-  nsCOMPtr<nsISupportsString> dataWrapper =
-    do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = dataWrapper->SetData(aData);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // If our data flavor has already been added, this will fail. But we don't care
-  aTransferable->AddDataFlavor(kTextMime);
-
-  nsCOMPtr<nsISupports> nsisupportsDataWrapper =
-    do_QueryInterface(dataWrapper);
-  return aTransferable->SetTransferData(kTextMime, nsisupportsDataWrapper);
+  pending->mCallback(CreateTextData(aData));
 }

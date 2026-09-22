@@ -7,14 +7,6 @@
 
 using namespace mozilla::widget;
 
-/* GetD2DEnabled and GetDwriteEnabled shouldn't be called until after gfxPlatform initialization
- * has occurred because they depend on it for information. (See bug 591561) */
-nsresult
-GfxInfo::GetD2DEnabled(bool *aEnabled)
-{
-  return NS_ERROR_FAILURE;
-}
-
 nsresult
 GfxInfo::GetDWriteEnabled(bool *aEnabled)
 {
@@ -163,7 +155,7 @@ GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
   return NS_ERROR_FAILURE;
 }
 
-const nsTArray<GfxDriverInfo>&
+const nsTArray<RefPtr<GfxDriverInfo>>&
 GfxInfo::GetGfxDriverInfo()
 {
   return *sDriverInfo;
@@ -178,7 +170,7 @@ nsresult
 GfxInfo::GetFeatureStatusImpl(int32_t /*aFeature*/,
                               int32_t *aStatus,
                               nsAString & /*aSuggestedDriverVersion*/,
-                              const nsTArray<GfxDriverInfo>& /*aDriverInfo*/,
+                              const nsTArray<RefPtr<GfxDriverInfo>>& /*aDriverInfo*/,
                               nsACString & /*aFailureId*/,
                               OperatingSystem* /*aOS*/ /* = nullptr */)
 {

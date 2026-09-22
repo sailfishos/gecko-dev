@@ -79,7 +79,6 @@ already_AddRefed<PrintTarget> nsDeviceContextSpecQt::MakePrintTarget()
 
     nsresult rv = NS_NewNativeLocalFile(
             nsDependentCString(file.fileName().toUtf8().constData()),
-            false,
             getter_AddRefs(mSpoolFile));
     if (NS_FAILED(rv)) {
         file.remove();
@@ -140,6 +139,7 @@ NS_IMETHODIMP nsDeviceContextSpecQt::Init(nsIPrintSettings* aPS,
 NS_IMETHODIMP nsDeviceContextSpecQt::BeginDocument(
         const nsAString& aTitle,
         const nsAString& aPrintToFileName,
+        uint64_t aBrowsingContextId,
         int32_t aStartPage,
         int32_t aEndPage)
 {
@@ -166,7 +166,7 @@ RefPtr<PrintEndDocumentPromise> nsDeviceContextSpecQt::EndDocument()
     nsCOMPtr<nsIFile> destFile;
     mPrintSettings->GetToFileName(targetPath);
 
-    nsresult rv = NS_NewLocalFile(targetPath, false, getter_AddRefs(destFile));
+    nsresult rv = NS_NewLocalFile(targetPath, getter_AddRefs(destFile));
     if (NS_FAILED(rv)) {
         return PrintEndDocumentPromise::CreateAndReject(rv, __func__);
     }

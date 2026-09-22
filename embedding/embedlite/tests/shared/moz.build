@@ -4,11 +4,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-USE_STATIC_LIBS = True
+FORCE_STATIC_LIB = True
 
 EXPORTS += [
     'qmessagepump.h',
 ]
+
+GeneratedFile(
+    'moc_qmessagepump.cpp',
+    script='/build/qt/moc.py',
+    inputs=['qmessagepump.h'],
+    flags=[CONFIG['MOC']] + CONFIG['MOZ_QT_CFLAGS'],
+)
 
 SOURCES += [
     '!moc_qmessagepump.cpp',

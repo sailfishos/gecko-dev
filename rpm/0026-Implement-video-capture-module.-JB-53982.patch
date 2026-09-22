@@ -1,0 +1,790 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 5 Aug 2026 13:05:05 +0200
+Subject: Implement video capture module. JB#53982
+
+Port the Sailfish geckocamera backend to current libwebrtc interfaces.
+Retain mapped frame ownership and rotate camera frames during IPC copying.
+
+Allow WebRTC's reference-counting wrapper to subclass the Sailfish
+capture implementation, matching the other platform modules.
+---
+ dom/media/systemservices/VideoFrameUtils.cpp  | 125 +++++++++-
+ .../video_capture/sfos/device_info_sfos.cc    | 188 +++++++++++++++
+ .../video_capture/sfos/device_info_sfos.h     |  55 +++++
+ .../video_capture/sfos/video_capture_sfos.cc  | 228 ++++++++++++++++++
+ .../video_capture/sfos/video_capture_sfos.h   |  45 ++++
+ .../video_capture/video_capture_impl.cc       |  22 ++
+ .../video_capture/video_capture_impl.h        |   4 +
+ 7 files changed, 660 insertions(+), 7 deletions(-)
+ create mode 100644 third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.cc
+ create mode 100644 third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.h
+ create mode 100644 third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.cc
+ create mode 100644 third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h
+
+diff --git a/dom/media/systemservices/VideoFrameUtils.cpp b/dom/media/systemservices/VideoFrameUtils.cpp
+index 7ce3a4cbe3eb..0c151ca03d3c 100644
+--- a/dom/media/systemservices/VideoFrameUtils.cpp
++++ b/dom/media/systemservices/VideoFrameUtils.cpp
+@@ -7,15 +7,67 @@
+ #include "api/video/video_frame.h"
+ #include "mozilla/ShmemPool.h"
+ 
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++#  include <algorithm>
++
++#  include "libyuv/rotate.h"
++#endif
++
+ namespace mozilla {
+ 
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++namespace {
++
++struct PackedI420Layout {
++  int width;
++  int height;
++  int strideY;
++  int strideUV;
++  size_t sizeY;
++  size_t sizeU;
++  size_t sizeV;
++
++  size_t TotalSize() const { return sizeY + sizeU + sizeV; }
++};
++
++PackedI420Layout GetPackedI420Layout(
++    const webrtc::VideoFrame& aVideoFrame) {
++  auto i420 = aVideoFrame.video_frame_buffer()->ToI420();
++  int width = i420->width();
++  int height = i420->height();
++  MOZ_RELEASE_ASSERT(width > 0 && height > 0);
++
++  if (aVideoFrame.rotation() == webrtc::kVideoRotation_90 ||
++      aVideoFrame.rotation() == webrtc::kVideoRotation_270) {
++    std::swap(width, height);
++  }
++
++  const int strideY = width;
++  const int strideUV = (width + 1) / 2;
++  const size_t chromaHeight = (static_cast<size_t>(height) + 1) / 2;
++  return {width,
++          height,
++          strideY,
++          strideUV,
++          static_cast<size_t>(height) * strideY,
++          chromaHeight * strideUV,
++          chromaHeight * strideUV};
++}
++
++}  // namespace
++#endif
++
+ uint32_t VideoFrameUtils::TotalRequiredBufferSize(
+     const webrtc::VideoFrame& aVideoFrame) {
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  size_t size = GetPackedI420Layout(aVideoFrame).TotalSize();
++#else
+   auto i420 = aVideoFrame.video_frame_buffer()->ToI420();
+   auto height = i420->height();
+   size_t size = height * i420->StrideY() +
+                 ((height + 1) / 2) * i420->StrideU() +
+                 ((height + 1) / 2) * i420->StrideV();
++#endif
+   MOZ_RELEASE_ASSERT(size < std::numeric_limits<uint32_t>::max());
+   return static_cast<uint32_t>(size);
+ }
+@@ -34,6 +86,17 @@ void VideoFrameUtils::InitFrameBufferProperties(
+   aDestProps.renderTimeMs() = aVideoFrame.render_time_ms();
+   aDestProps.rotation() = aVideoFrame.rotation();
+ 
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  const auto layout = GetPackedI420Layout(aVideoFrame);
++  aDestProps.width() = layout.width;
++  aDestProps.height() = layout.height;
++  aDestProps.yStride() = layout.strideY;
++  aDestProps.uStride() = layout.strideUV;
++  aDestProps.vStride() = layout.strideUV;
++  aDestProps.yAllocatedSize() = layout.sizeY;
++  aDestProps.uAllocatedSize() = layout.sizeU;
++  aDestProps.vAllocatedSize() = layout.sizeV;
++#else
+   auto i420 = aVideoFrame.video_frame_buffer()->ToI420();
+   auto height = i420->height();
+   aDestProps.yAllocatedSize() = height * i420->StrideY();
+@@ -46,6 +109,7 @@ void VideoFrameUtils::InitFrameBufferProperties(
+   aDestProps.yStride() = i420->StrideY();
+   aDestProps.uStride() = i420->StrideU();
+   aDestProps.vStride() = i420->StrideV();
++#endif
+ }
+ 
+ void VideoFrameUtils::CopyVideoFrameBuffers(uint8_t* aDestBuffer,
+@@ -55,18 +119,64 @@ void VideoFrameUtils::CopyVideoFrameBuffers(uint8_t* aDestBuffer,
+ 
+   MOZ_ASSERT(aDestBufferSize >= aggregateSize);
+   auto i420 = aFrame.video_frame_buffer()->ToI420();
+-
+-  // If planes are ordered YUV and contiguous then do a single copy
+-  if ((i420->DataY() != nullptr) &&
+-      // Check that the three planes are ordered
++  const size_t sourceSize =
++      static_cast<size_t>(i420->height()) * i420->StrideY() +
++      ((static_cast<size_t>(i420->height()) + 1) / 2) * i420->StrideU() +
++      ((static_cast<size_t>(i420->height()) + 1) / 2) * i420->StrideV();
++
++  // If planes are ordered YUV and contiguous then do a single copy.
++  const bool is_contiguous =
++      (i420->DataY() != nullptr) &&
++      // Check that the three planes are ordered.
+       (i420->DataY() < i420->DataU()) && (i420->DataU() < i420->DataV()) &&
+-      //  Check that the last plane ends at firstPlane[totalsize]
+-      (&i420->DataY()[aggregateSize] ==
+-       &i420->DataV()[((i420->height() + 1) / 2) * i420->StrideV()])) {
++      // Check that the last plane ends at firstPlane[totalsize].
++      (&i420->DataY()[sourceSize] ==
++       &i420->DataV()[((i420->height() + 1) / 2) * i420->StrideV()]);
++
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  const auto layout = GetPackedI420Layout(aFrame);
++  const bool is_tightly_packed =
++      i420->StrideY() == layout.strideY &&
++      i420->StrideU() == layout.strideUV &&
++      i420->StrideV() == layout.strideUV;
++  if (is_contiguous && is_tightly_packed &&
++      aFrame.rotation() == webrtc::kVideoRotation_0) {
++#else
++  if (is_contiguous) {
++#endif
+     memcpy(aDestBuffer, i420->DataY(), aggregateSize);
+     return;
+   }
+ 
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  libyuv::RotationMode rotation_mode;
++
++  switch (aFrame.rotation()) {
++    case webrtc::kVideoRotation_90:
++      rotation_mode = libyuv::kRotate90;
++      break;
++    case webrtc::kVideoRotation_180:
++      rotation_mode = libyuv::kRotate180;
++      break;
++    case webrtc::kVideoRotation_270:
++      rotation_mode = libyuv::kRotate270;
++      break;
++    case webrtc::kVideoRotation_0:
++    default:
++      rotation_mode = libyuv::kRotate0;
++      break;
++  }
++
++  const size_t offset_u = layout.sizeY;
++  const size_t offset_v = offset_u + layout.sizeU;
++
++  MOZ_RELEASE_ASSERT(
++      libyuv::I420Rotate(
++          i420->DataY(), i420->StrideY(), i420->DataU(), i420->StrideU(),
++          i420->DataV(), i420->StrideV(), aDestBuffer, layout.strideY,
++          &aDestBuffer[offset_u], layout.strideUV, &aDestBuffer[offset_v],
++          layout.strideUV, i420->width(), i420->height(), rotation_mode) == 0);
++#else
+   // Copy each plane
+   size_t offset = 0;
+   size_t size;
+@@ -79,6 +189,7 @@ void VideoFrameUtils::CopyVideoFrameBuffers(uint8_t* aDestBuffer,
+   offset += size;
+   size = ((height + 1) / 2) * i420->StrideV();
+   memcpy(&aDestBuffer[offset], i420->DataV(), size);
++#endif
+ }
+ 
+ void VideoFrameUtils::CopyVideoFrameBuffers(
+diff --git a/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.cc b/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.cc
+new file mode 100644
+index 000000000000..1f96afc2eccc
+--- /dev/null
++++ b/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.cc
+@@ -0,0 +1,188 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "modules/video_capture/sfos/device_info_sfos.h"
++
++#include <algorithm>
++#include <cstdlib>
++#include <cstring>
++#include <utility>
++
++#include "mozilla/Preferences.h"
++#include "modules/video_capture/video_capture_impl.h"
++#include "rtc_base/logging.h"
++
++namespace webrtc {
++namespace videocapturemodule {
++namespace {
++
++constexpr char kMaxWidthPref[] = "media.getusermedia.camera.max_width";
++constexpr char kMaxHeightPref[] = "media.getusermedia.camera.max_height";
++
++bool CopyString(const std::string& source,
++                char* destination,
++                uint32_t destination_length) {
++  if (!destination || destination_length <= source.size()) {
++    return false;
++  }
++  std::memset(destination, 0, destination_length);
++  std::memcpy(destination, source.data(), source.size());
++  return true;
++}
++
++}  // namespace
++
++VideoCaptureModule::DeviceInfo* VideoCaptureImpl::CreateDeviceInfo() {
++  return new DeviceInfoSFOS();
++}
++
++VideoCaptureModule::DeviceInfo* VideoCaptureImpl::CreateDeviceInfo(
++    VideoCaptureOptions* /* options */) {
++  return new DeviceInfoSFOS();
++}
++
++DeviceInfoSFOS::DeviceInfoSFOS() { Init(); }
++
++int32_t DeviceInfoSFOS::Init() {
++  camera_manager_ = gecko_camera_manager();
++  return camera_manager_ ? 0 : -1;
++}
++
++bool DeviceInfoSFOS::RefreshCameraList() {
++  camera_list_.clear();
++  if (!camera_manager_) {
++    return false;
++  }
++
++  const int camera_count = camera_manager_->getNumberOfCameras();
++  for (int i = 0; i < camera_count; ++i) {
++    gecko::camera::CameraInfo info{};
++    if (camera_manager_->getCameraInfo(i, info)) {
++      camera_list_.push_back(std::move(info));
++    }
++  }
++
++  std::stable_sort(
++      camera_list_.begin(), camera_list_.end(),
++      [](const gecko::camera::CameraInfo& first,
++         const gecko::camera::CameraInfo& second) {
++        const bool first_is_front =
++            first.facing == gecko::camera::GECKO_CAMERA_FACING_FRONT;
++        const bool second_is_front =
++            second.facing == gecko::camera::GECKO_CAMERA_FACING_FRONT;
++        return first_is_front > second_is_front;
++      });
++  return true;
++}
++
++uint32_t DeviceInfoSFOS::NumberOfDevices() {
++  MutexLock lock(&_apiLock);
++  RefreshCameraList();
++  return static_cast<uint32_t>(camera_list_.size());
++}
++
++int32_t DeviceInfoSFOS::Refresh() {
++  MutexLock lock(&_apiLock);
++  return RefreshCameraList() ? 0 : -1;
++}
++
++int32_t DeviceInfoSFOS::GetDeviceName(
++    uint32_t device_number,
++    char* device_name_utf8,
++    uint32_t device_name_length,
++    char* device_unique_id_utf8,
++    uint32_t device_unique_id_utf8_length,
++    char* product_unique_id_utf8,
++    uint32_t product_unique_id_utf8_length,
++    pid_t* pid,
++    bool* device_is_placeholder) {
++  MutexLock lock(&_apiLock);
++  if (!RefreshCameraList() || device_number >= camera_list_.size()) {
++    return -1;
++  }
++
++  const auto& info = camera_list_[device_number];
++  if (!CopyString(info.name, device_name_utf8, device_name_length) ||
++      !CopyString(info.id, device_unique_id_utf8,
++                  device_unique_id_utf8_length) ||
++      (product_unique_id_utf8 &&
++       !CopyString(info.provider, product_unique_id_utf8,
++                   product_unique_id_utf8_length))) {
++    RTC_LOG(LS_ERROR) << "Camera name buffer is too small";
++    return -1;
++  }
++
++  if (pid) {
++    *pid = 0;
++  }
++  if (device_is_placeholder) {
++    *device_is_placeholder = false;
++  }
++  return 0;
++}
++
++int32_t DeviceInfoSFOS::CreateCapabilityMap(
++    const char* device_unique_id_utf8) {
++  if (!camera_manager_ || !device_unique_id_utf8) {
++    return -1;
++  }
++
++  const size_t name_length = std::strlen(device_unique_id_utf8);
++  if (name_length >= kVideoCaptureUniqueNameLength) {
++    RTC_LOG(LS_ERROR) << "Camera device name is too long";
++    return -1;
++  }
++
++  std::vector<gecko::camera::CameraCapability> camera_capabilities;
++  if (!camera_manager_->queryCapabilities(device_unique_id_utf8,
++                                          camera_capabilities)) {
++    return -1;
++  }
++
++  char* updated_name = static_cast<char*>(
++      std::realloc(_lastUsedDeviceName, name_length + 1));
++  if (!updated_name) {
++    return -1;
++  }
++  _lastUsedDeviceName = updated_name;
++  _lastUsedDeviceNameLength = static_cast<uint32_t>(name_length);
++  std::memcpy(_lastUsedDeviceName, device_unique_id_utf8, name_length + 1);
++
++  const uint32_t max_width =
++      mozilla::Preferences::GetUint(kMaxWidthPref, 640);
++  const uint32_t max_height =
++      mozilla::Preferences::GetUint(kMaxHeightPref, 480);
++
++  _captureCapabilities.clear();
++  for (const auto& camera_capability : camera_capabilities) {
++    if (!camera_capability.width || !camera_capability.height ||
++        !camera_capability.fps || camera_capability.width > max_width ||
++        camera_capability.height > max_height) {
++      continue;
++    }
++
++    VideoCaptureCapability capability;
++    capability.width = camera_capability.width;
++    capability.height = camera_capability.height;
++    capability.maxFPS = camera_capability.fps;
++    capability.videoType = VideoType::kI420;
++    _captureCapabilities.push_back(capability);
++  }
++
++  RTC_LOG(LS_INFO) << "Capability map for camera " << device_unique_id_utf8
++                   << " has " << _captureCapabilities.size() << " entries";
++  return static_cast<int32_t>(_captureCapabilities.size());
++}
++
++int32_t DeviceInfoSFOS::DisplayCaptureSettingsDialogBox(
++    const char* /* device_unique_id_utf8 */,
++    const char* /* dialog_title_utf8 */,
++    void* /* parent_window */,
++    uint32_t /* position_x */,
++    uint32_t /* position_y */) {
++  return -1;
++}
++
++}  // namespace videocapturemodule
++}  // namespace webrtc
+diff --git a/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.h b/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.h
+new file mode 100644
+index 000000000000..e412b3238531
+--- /dev/null
++++ b/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.h
+@@ -0,0 +1,55 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef MODULES_VIDEO_CAPTURE_SFOS_DEVICE_INFO_SFOS_H_
++#define MODULES_VIDEO_CAPTURE_SFOS_DEVICE_INFO_SFOS_H_
++
++#include <sys/types.h>
++
++#include <string>
++#include <vector>
++
++#include <geckocamera.h>
++
++#include "modules/video_capture/device_info_impl.h"
++
++namespace webrtc {
++namespace videocapturemodule {
++
++class DeviceInfoSFOS final : public DeviceInfoImpl {
++ public:
++  DeviceInfoSFOS();
++  ~DeviceInfoSFOS() override = default;
++
++  uint32_t NumberOfDevices() override;
++  int32_t Refresh() override;
++  int32_t GetDeviceName(uint32_t device_number,
++                        char* device_name_utf8,
++                        uint32_t device_name_length,
++                        char* device_unique_id_utf8,
++                        uint32_t device_unique_id_utf8_length,
++                        char* product_unique_id_utf8,
++                        uint32_t product_unique_id_utf8_length,
++                        pid_t* pid,
++                        bool* device_is_placeholder) override;
++  int32_t DisplayCaptureSettingsDialogBox(const char* device_unique_id_utf8,
++                                          const char* dialog_title_utf8,
++                                          void* parent_window,
++                                          uint32_t position_x,
++                                          uint32_t position_y) override;
++
++ private:
++  int32_t Init() override;
++  int32_t CreateCapabilityMap(const char* device_unique_id_utf8) override;
++  bool RefreshCameraList() RTC_EXCLUSIVE_LOCKS_REQUIRED(_apiLock);
++
++  gecko::camera::CameraManager* camera_manager_ = nullptr;
++  std::vector<gecko::camera::CameraInfo> camera_list_
++      RTC_GUARDED_BY(_apiLock);
++};
++
++}  // namespace videocapturemodule
++}  // namespace webrtc
++
++#endif  // MODULES_VIDEO_CAPTURE_SFOS_DEVICE_INFO_SFOS_H_
+diff --git a/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.cc b/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.cc
+new file mode 100644
+index 000000000000..dcf9eded901b
+--- /dev/null
++++ b/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.cc
+@@ -0,0 +1,228 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "modules/video_capture/sfos/video_capture_sfos.h"
++
++#include <cstring>
++#include <new>
++#include <utility>
++
++#include "api/make_ref_counted.h"
++#include "api/video/i420_buffer.h"
++#include "common_video/include/video_frame_buffer.h"
++#include "libyuv/convert.h"
++#include "rtc_base/logging.h"
++#include "system_wrappers/include/clock.h"
++
++namespace webrtc {
++namespace videocapturemodule {
++
++scoped_refptr<VideoCaptureModule> VideoCaptureImpl::Create(
++    Clock* clock,
++    const char* device_unique_id_utf8) {
++  auto implementation = make_ref_counted<VideoCaptureModuleSFOS>(clock);
++  if (implementation->Init(device_unique_id_utf8) != 0) {
++    return nullptr;
++  }
++  return implementation;
++}
++
++scoped_refptr<VideoCaptureModule> VideoCaptureImpl::Create(
++    Clock* clock,
++    VideoCaptureOptions* /* options */,
++    const char* device_unique_id_utf8) {
++  return Create(clock, device_unique_id_utf8);
++}
++
++VideoCaptureModuleSFOS::VideoCaptureModuleSFOS(Clock* clock)
++    : VideoCaptureImpl(clock), capture_clock_(clock) {}
++
++VideoCaptureModuleSFOS::~VideoCaptureModuleSFOS() {
++  if (camera_) {
++    // stopCapture() is the provider's synchronous callback-quiescence point.
++    // Keep the listener valid until it returns so an in-flight callback can
++    // finish while this object is still alive.
++    camera_->stopCapture();
++    camera_->setListener(nullptr);
++  }
++}
++
++int32_t VideoCaptureModuleSFOS::Init(const char* device_unique_id_utf8) {
++  if (!device_unique_id_utf8) {
++    return -1;
++  }
++
++  RTC_DCHECK_RUN_ON(&api_checker_);
++  const size_t name_length = std::strlen(device_unique_id_utf8);
++  if (name_length >= kVideoCaptureUniqueNameLength) {
++    return -1;
++  }
++
++  _deviceUniqueId = new (std::nothrow) char[name_length + 1];
++  if (!_deviceUniqueId) {
++    return -1;
++  }
++  std::memcpy(_deviceUniqueId, device_unique_id_utf8, name_length + 1);
++
++  gecko::camera::CameraManager* manager = gecko_camera_manager();
++  if (!manager || !manager->openCamera(device_unique_id_utf8, camera_) ||
++      !camera_) {
++    return -1;
++  }
++
++  gecko::camera::CameraInfo info{};
++  if (!camera_->getInfo(info)) {
++    camera_.reset();
++    return -1;
++  }
++
++  sensor_mount_angle_ = info.mountAngle;
++  if (sensor_mount_angle_ % 90 != 0) {
++    RTC_LOG(LS_WARNING) << "Invalid camera mount angle "
++                        << sensor_mount_angle_;
++    sensor_mount_angle_ = 0;
++  }
++  camera_->setListener(this);
++  return 0;
++}
++
++int32_t VideoCaptureModuleSFOS::StartCapture(
++    const VideoCaptureCapability& capability) {
++  RTC_DCHECK_RUN_ON(&api_checker_);
++  if (!camera_ || capability.width <= 0 || capability.height <= 0 ||
++      capability.maxFPS <= 0) {
++    return -1;
++  }
++
++  if (camera_->captureStarted()) {
++    if (capability == _requestedCapability) {
++      return 0;
++    }
++    if (!camera_->stopCapture()) {
++      return -1;
++    }
++  }
++
++  UpdateCaptureRotation();
++
++  gecko::camera::CameraCapability camera_capability{};
++  camera_capability.width = static_cast<unsigned int>(capability.width);
++  camera_capability.height = static_cast<unsigned int>(capability.height);
++  camera_capability.fps = static_cast<unsigned int>(capability.maxFPS);
++  if (!camera_->startCapture(camera_capability)) {
++    return -1;
++  }
++
++  _requestedCapability = capability;
++  _requestedCapability.videoType = VideoType::kI420;
++  return 0;
++}
++
++int32_t VideoCaptureModuleSFOS::StopCapture() {
++  RTC_DCHECK_RUN_ON(&api_checker_);
++  if (!camera_) {
++    return -1;
++  }
++  if (!camera_->captureStarted()) {
++    return 0;
++  }
++  return camera_->stopCapture() ? 0 : -1;
++}
++
++bool VideoCaptureModuleSFOS::CaptureStarted() {
++  RTC_DCHECK_RUN_ON(&api_checker_);
++  return camera_ && camera_->captureStarted();
++}
++
++int32_t VideoCaptureModuleSFOS::CaptureSettings(
++    VideoCaptureCapability& settings) {
++  RTC_DCHECK_RUN_ON(&api_checker_);
++  settings = _requestedCapability;
++  return 0;
++}
++
++void VideoCaptureModuleSFOS::onCameraFrame(
++    std::shared_ptr<gecko::camera::GraphicBuffer> graphic_buffer) {
++  if (!graphic_buffer ||
++      graphic_buffer->imageFormat != gecko::camera::ImageFormat::YCbCr) {
++    RTC_LOG(LS_ERROR) << "Invalid camera image format";
++    return;
++  }
++
++  auto frame = graphic_buffer->mapYCbCr();
++  if (!frame || !frame->y || !frame->cb || !frame->cr || !frame->width ||
++      !frame->height || !frame->chromaStep) {
++    RTC_LOG(LS_ERROR) << "Could not map camera frame";
++    return;
++  }
++
++  const int chroma_width = (frame->width + 1) / 2;
++  const int minimum_chroma_stride =
++      (chroma_width - 1) * frame->chromaStep + 1;
++  if (frame->yStride < frame->width ||
++      frame->cStride < minimum_chroma_stride) {
++    RTC_LOG(LS_ERROR) << "Invalid camera frame strides";
++    return;
++  }
++
++  const uint64_t timestamp_us = frame->timestampUs;
++  scoped_refptr<I420BufferInterface> buffer;
++  if (frame->chromaStep == 1) {
++    buffer = WrapI420Buffer(
++        frame->width, frame->height, frame->y, frame->yStride, frame->cb,
++        frame->cStride, frame->cr, frame->cStride,
++        [frame = std::move(frame)]() {});
++  } else if (frame->chromaStep == 2) {
++    auto owned_buffer = I420Buffer::Create(frame->width, frame->height);
++    const int result = libyuv::Android420ToI420(
++        frame->y, frame->yStride, frame->cb, frame->cStride, frame->cr,
++        frame->cStride, frame->chromaStep, owned_buffer->MutableDataY(),
++        owned_buffer->StrideY(), owned_buffer->MutableDataU(),
++        owned_buffer->StrideU(), owned_buffer->MutableDataV(),
++        owned_buffer->StrideV(), frame->width, frame->height);
++    if (result != 0) {
++      RTC_LOG(LS_ERROR) << "Could not convert camera frame to I420";
++      return;
++    }
++    buffer = std::move(owned_buffer);
++  } else {
++    RTC_LOG(LS_ERROR) << "Unsupported camera chroma step "
++                      << frame->chromaStep;
++    return;
++  }
++
++  int64_t capture_time_ms = capture_clock_->CurrentNtpInMilliseconds();
++  if (timestamp_us) {
++    const int64_t frame_time_ms =
++        static_cast<int64_t>(timestamp_us / 1000);
++    const int64_t now_ms = capture_clock_->TimeInMilliseconds();
++    // Production droid camera timestamps use Android's monotonic clock, which
++    // shares WebRTC's epoch. Fall back to callback time for other providers.
++    if (frame_time_ms >= now_ms - 60'000 && frame_time_ms <= now_ms + 1'000) {
++      capture_time_ms =
++          capture_clock_->ConvertTimestampToNtpTimeInMilliseconds(
++              frame_time_ms);
++    }
++  }
++  if (IncomingVideoBuffer(buffer, capture_time_ms) != 0) {
++    RTC_LOG(LS_ERROR) << "Could not deliver camera frame";
++  }
++}
++
++void VideoCaptureModuleSFOS::onCameraError(std::string error_description) {
++  RTC_LOG(LS_ERROR) << "Camera error: " << error_description;
++}
++
++void VideoCaptureModuleSFOS::UpdateCaptureRotation() {
++  VideoRotation rotation = kVideoRotation_0;
++  if (RotationFromDegrees(static_cast<int>(sensor_mount_angle_ % 360),
++                          &rotation) != 0) {
++    RTC_LOG(LS_WARNING) << "Could not convert camera mount angle";
++  }
++  RTC_LOG(LS_INFO) << "Camera sensor mount angle=" << sensor_mount_angle_;
++  SetCaptureRotation(rotation);
++}
++
++}  // namespace videocapturemodule
++}  // namespace webrtc
+diff --git a/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h b/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h
+new file mode 100644
+index 000000000000..35012aec6b4c
+--- /dev/null
++++ b/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h
+@@ -0,0 +1,45 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef MODULES_VIDEO_CAPTURE_SFOS_VIDEO_CAPTURE_SFOS_H_
++#define MODULES_VIDEO_CAPTURE_SFOS_VIDEO_CAPTURE_SFOS_H_
++
++#include <memory>
++#include <string>
++
++#include <geckocamera.h>
++
++#include "modules/video_capture/video_capture_impl.h"
++
++namespace webrtc {
++namespace videocapturemodule {
++
++class VideoCaptureModuleSFOS : public VideoCaptureImpl,
++                               public gecko::camera::CameraListener {
++ public:
++  explicit VideoCaptureModuleSFOS(Clock* clock);
++  ~VideoCaptureModuleSFOS() override;
++
++  int32_t Init(const char* device_unique_id_utf8);
++  int32_t StartCapture(const VideoCaptureCapability& capability) override;
++  int32_t StopCapture() override;
++  bool CaptureStarted() override;
++  int32_t CaptureSettings(VideoCaptureCapability& settings) override;
++
++  void onCameraFrame(
++      std::shared_ptr<gecko::camera::GraphicBuffer> buffer) override;
++  void onCameraError(std::string error_description) override;
++
++ private:
++  void UpdateCaptureRotation();
++
++  Clock* const capture_clock_;
++  unsigned int sensor_mount_angle_ = 0;
++  std::shared_ptr<gecko::camera::Camera> camera_;
++};
++
++}  // namespace videocapturemodule
++}  // namespace webrtc
++
++#endif  // MODULES_VIDEO_CAPTURE_SFOS_VIDEO_CAPTURE_SFOS_H_
+diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc b/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc
+index f4f9827ef55a..af2317bc3e15 100644
+--- a/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc
++++ b/third_party/libwebrtc/modules/video_capture/video_capture_impl.cc
+@@ -263,6 +263,28 @@ int32_t VideoCaptureImpl::IncomingFrame(uint8_t* videoFrame,
+   return 0;
+ }
+ 
++int32_t VideoCaptureImpl::IncomingVideoBuffer(
++    const scoped_refptr<VideoFrameBuffer>& buffer,
++    int64_t capture_time) {
++  RTC_CHECK_RUNS_SERIALIZED(&capture_checker_);
++  MutexLock lock(&api_lock_);
++
++  if (_rawDataCallBack) {
++    RTC_LOG(LS_ERROR) << "Raw capture callbacks do not support video buffers";
++    return -1;
++  }
++
++  VideoFrame capture_frame =
++      VideoFrame::Builder()
++          .set_video_frame_buffer(buffer)
++          .set_rtp_timestamp(0)
++          .set_timestamp_ms(clock_->TimeInMilliseconds())
++          .set_rotation(_rotateFrame)
++          .build();
++  capture_frame.set_ntp_time_ms(capture_time);
++  return DeliverCapturedFrame(capture_frame);
++}
++
+ int32_t VideoCaptureImpl::StartCapture(
+     const VideoCaptureCapability& capability) {
+   RTC_DCHECK_RUN_ON(&api_checker_);
+diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_impl.h b/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
+index ec404f098d4a..3e0b60ef148d 100644
+--- a/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
++++ b/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
+@@ -89,6 +89,10 @@ class RTC_EXPORT VideoCaptureImpl : public VideoCaptureModule {
+   explicit VideoCaptureImpl(Clock* clock);
+   ~VideoCaptureImpl() override;
+ 
++  int32_t IncomingVideoBuffer(
++      const scoped_refptr<VideoFrameBuffer>& buffer,
++      int64_t capture_time);
++
+   // Calls to the public API must happen on a single thread.
+   SequenceChecker api_checker_;
+   // RaceChecker for members that can be accessed on the API thread while

@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 5 Aug 2026 16:52:58 +0200
+Subject: Separate the bindgen runtime libclang path
+
+Sailfish cross builds need configure to inspect the target SDK's libclang
+while host Rust build scripts load an executable host-architecture library.
+Retain a separate environment override for the latter.
+
+ESR140 requires cbindgen 0.27 or newer, so the old cbindgen 0.24 compatibility
+definition and duplicate WebRender constant are no longer needed.
+
+Parse Gecko headers as GNU C++17 when bindgen does not use clang-cl.
+ESR140 headers use C++17 library features, so bindgen must pass an explicit
+C++17 language mode to libclang.
+---
+ build/moz.configure/bindgen.configure | 17 +++++++++++++++++
+ config/makefiles/rust.mk              |  9 +++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
+index 078937ddcdae..5182c6ef74c0 100644
+--- a/build/moz.configure/bindgen.configure
++++ b/build/moz.configure/bindgen.configure
+@@ -93,6 +93,11 @@ option(
+     nargs=1,
+     help="Absolute path to a directory containing Clang/LLVM libraries for bindgen (version 3.9.x or above)",
+ )
++option(
++    env="MOZ_LIBCLANG_BINDGEN_PATH",
++    nargs=1,
++    help="Host libclang directory loaded by Rust bindgen build scripts",
++)
+ option(
+     "--with-clang-path",
+     nargs=1,
+@@ -313,6 +318,16 @@ set_config("MOZ_LIBCLANG_PATH", bindgen_config_paths.libclang_path)
+ set_config("MOZ_CLANG_PATH", bindgen_config_paths.clang_path)
+ 
+ 
++@depends("MOZ_LIBCLANG_BINDGEN_PATH", bindgen_config_paths.libclang_path)
++def bindgen_runtime_libclang_path(path, default):
++    if path:
++        return path[0]
++    return default
++
++
++set_config("MOZ_LIBCLANG_BINDGEN_PATH", bindgen_runtime_libclang_path)
++
++
+ @depends(
+     target,
+     cxx_compiler,
+@@ -354,6 +369,8 @@ def basic_bindgen_cflags(
+             # to exclude hidden symbols from the generated file.
+             "-DHAVE_VISIBILITY_HIDDEN_ATTRIBUTE=1",
+         ]
++    else:
++        args.append("-std=gnu++17")
+ 
+     return args + (clang_flags or []) + (all_arm_flags or [])
+ 
+diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
+index 06893db33c7e..01bd98193d77 100644
+--- a/config/makefiles/rust.mk
++++ b/config/makefiles/rust.mk
+@@ -276,7 +276,16 @@ export RUSTC
+ export RUSTDOC
+ export RUSTDOCFLAGS
+ export RUSTFMT
++ifdef MOZ_LIBCLANG_BINDGEN_PATH
++export LIBCLANG_PATH=$(MOZ_LIBCLANG_BINDGEN_PATH)
++ifdef LD_LIBRARY_PATH
++export LD_LIBRARY_PATH:=$(MOZ_LIBCLANG_BINDGEN_PATH):$(LD_LIBRARY_PATH)
++else
++export LD_LIBRARY_PATH:=$(MOZ_LIBCLANG_BINDGEN_PATH)
++endif
++else
+ export LIBCLANG_PATH=$(MOZ_LIBCLANG_PATH)
++endif
+ export CLANG_PATH=$(MOZ_CLANG_PATH)
+ export PKG_CONFIG
+ export PKG_CONFIG_ALLOW_CROSS=1

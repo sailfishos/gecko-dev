@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 9 Sep 2026 13:39:43 +0200
+Subject: [sailfishos][history] Use Android BFCache sizing on Qt
+
+Apply the mobile RAM-based viewer limit to Qt builds, matching Android
+sizing instead of the desktop calculation.
+---
+ docshell/shistory/nsSHistory.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/docshell/shistory/nsSHistory.cpp b/docshell/shistory/nsSHistory.cpp
+index 1a7c5580b8b9..d7c6bffc30dc 100644
+--- a/docshell/shistory/nsSHistory.cpp
++++ b/docshell/shistory/nsSHistory.cpp
+@@ -286,7 +286,7 @@ NS_INTERFACE_MAP_END
+ uint32_t nsSHistory::CalcMaxTotalViewers() {
+ // This value allows tweaking how fast the allowed amount of content viewers
+ // grows with increasing amounts of memory. Larger values mean slower growth.
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(MOZ_WIDGET_QT)
+ #  define MAX_TOTAL_VIEWERS_BIAS 15.9
+ #else
+ #  define MAX_TOTAL_VIEWERS_BIAS 14

@@ -39,6 +39,8 @@ static int sPokeEvent;
 
 nsAppShell::~nsAppShell()
 {
+    mShuttingDown = true;
+    QCoreApplication::removePostedEvents(this, sPokeEvent);
     nsQAppInstance::Release();
 }
 
@@ -58,10 +60,21 @@ nsAppShell::Init()
     return nsBaseAppShell::Init(mHasNativeEventDispatcher);
 }
 
+NS_IMETHODIMP
+nsAppShell::Observe(nsISupports *subject, const char *topic,
+                    const char16_t *data)
+{
+    // The native event queue outlives Gecko's task controller during
+    // XPCOM shutdown. Drain queued callbacks and make a racing post harmless.
+    mShuttingDown = true;
+    QCoreApplication::removePostedEvents(this, sPokeEvent);
+    return nsBaseAppShell::Observe(subject, topic, data);
+}
+
 void
 nsAppShell::ScheduleNativeEventCallback()
 {
-    if (!mHasNativeEventDispatcher)
+    if (!mHasNativeEventDispatcher || mShuttingDown)
         return;
 
     QCoreApplication::postEvent(this,
@@ -72,6 +85,11 @@ nsAppShell::ScheduleNativeEventCallback()
 bool
 nsAppShell::ProcessNextNativeEvent(bool mayWait)
 {
+    // A native callback already runs from Qt's dispatcher. Do not recurse
+    // into Qt while Gecko is draining the work scheduled by that callback.
+    if (mProcessingGeckoEvents)
+        return false;
+
     QEventLoop::ProcessEventsFlags flags = QEventLoop::AllEvents;
 
     if (mayWait)
@@ -88,7 +106,11 @@ bool
 nsAppShell::event (QEvent *e)
 {
     if (e->type() == sPokeEvent) {
-        NativeEventCallback();
+        if (!mShuttingDown) {
+            mProcessingGeckoEvents = true;
+            NativeEventCallback();
+            mProcessingGeckoEvents = false;
+        }
         return true;
     }
 

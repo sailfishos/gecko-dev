@@ -9,9 +9,14 @@ nsDragService::nsDragService() = default;
 
 nsDragService::~nsDragService() = default;
 
-nsresult nsDragService::InvokeDragSessionImpl(
-    nsIArray* aTransferableArray,
+nsresult nsDragSession::InvokeDragSessionImpl(
+    nsIWidget* aWidget, nsIArray* aTransferableArray,
     const mozilla::Maybe<mozilla::CSSIntRegion>& aRegion,
     uint32_t aActionType) {
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+already_AddRefed<nsIDragSession> nsDragService::CreateDragSession() {
+  RefPtr<nsIDragSession> session = new nsDragSession();
+  return session.forget();
 }

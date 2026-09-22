@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 12 Aug 2026 17:40:00 +0200
+Subject: [sailfishos][build] Expand mozglue into programs
+
+Linux libxul deliberately imports MFBT and mozglue symbols weakly because
+Gecko programs provide their implementations. Keeping mozglue as an
+unexpanded static archive prevents weak references from extracting its
+members, leaving plugin-container with null function addresses during libxul
+static initialization.
+
+Let the Gecko build backend expand mozglue objects into its program consumers
+as designed. FORCE_STATIC_LIB and SDK_LIBRARY still build and install the
+standalone SDK archive.
+---
+ config/rules.mk                                 |  2 +-
+ mozglue/build/moz.build                         |  2 --
+ .../mozbuild/mozbuild/backend/recursivemake.py  |  8 ++++++--
+ .../test/backend/data/linkage/static/moz.build  |  2 ++
+ .../mozbuild/test/backend/test_recursivemake.py | 17 +++++++++++++++++
+ 5 files changed, 26 insertions(+), 5 deletions(-)
+
+diff --git a/config/rules.mk b/config/rules.mk
+index 980ffae7b832..476d8dc6f380 100644
+--- a/config/rules.mk
++++ b/config/rules.mk
+@@ -83,7 +83,7 @@ endif # ENABLE_TESTS
+ 
+ ifndef LIBRARY
+ ifdef REAL_LIBRARY
+-ifdef NO_EXPAND_LIBS
++ifneq (,$(NO_EXPAND_LIBS)$(SDK_LIBRARY))
+ # Only build actual library if it is requested.
+ LIBRARY			:= $(REAL_LIBRARY)
+ endif
+diff --git a/mozglue/build/moz.build b/mozglue/build/moz.build
+index 03b9e74e43c9..f47238ae9ebf 100644
+--- a/mozglue/build/moz.build
++++ b/mozglue/build/moz.build
+@@ -94,8 +94,6 @@ LIBRARY_DEFINES["MOZ_HAS_MOZGLUE"] = True
+ if CONFIG["MOZ_LINKER"] and CONFIG["TARGET_CPU"] == "arm":
+     LDFLAGS += ["-Wl,-version-script,%s/arm-eabi-filter" % SRCDIR]
+ 
+-NO_EXPAND_LIBS = True
+-
+ DIST_INSTALL = True
+ 
+ include("replace_malloc.mozbuild")
+diff --git a/python/mozbuild/mozbuild/backend/recursivemake.py b/python/mozbuild/mozbuild/backend/recursivemake.py
+index 2e85660c441d..95e36983b841 100644
+--- a/python/mozbuild/mozbuild/backend/recursivemake.py
++++ b/python/mozbuild/mozbuild/backend/recursivemake.py
+@@ -1595,7 +1595,7 @@ class RecursiveMakeBackend(MakeBackend):
+                 ),
+             )
+             or isinstance(obj, (StaticLibrary, SandboxedWasmLibrary))
+-            and obj.no_expand_lib
++            and (obj.no_expand_lib or getattr(obj, "is_sdk", False))
+         ):
+             response_file_path = "%s.list" % obj.name.replace(".", "_")
+             response_file_ref = self._make_ar_response_file(
+@@ -1641,7 +1641,11 @@ class RecursiveMakeBackend(MakeBackend):
+             elif obj.KIND == "host":
+                 backend_file.write_once("HOST_EXTRA_LIBS += %s\n" % lib)
+ 
+-        if not isinstance(obj, (StaticLibrary, HostLibrary)) or obj.no_expand_lib:
++        if (
++            not isinstance(obj, (StaticLibrary, HostLibrary))
++            or obj.no_expand_lib
++            or getattr(obj, "is_sdk", False)
++        ):
+             # This will create the node even if there aren't any linked libraries.
+             build_target = self._build_target_for_obj(obj)
+             self._compile_graph[build_target]
+diff --git a/python/mozbuild/mozbuild/test/backend/data/linkage/static/moz.build b/python/mozbuild/mozbuild/test/backend/data/linkage/static/moz.build
+index 37b3d96cc71c..62cf10c13285 100644
+--- a/python/mozbuild/mozbuild/test/backend/data/linkage/static/moz.build
++++ b/python/mozbuild/mozbuild/test/backend/data/linkage/static/moz.build
+@@ -10,3 +10,5 @@ USE_LIBS += ["foo"]
+ OS_LIBS += ["-lbar"]
+ 
+ Library("bar")
++
++SDK_LIBRARY = True
+diff --git a/python/mozbuild/mozbuild/test/backend/test_recursivemake.py b/python/mozbuild/mozbuild/test/backend/test_recursivemake.py
+index 13f80663f69b..14ddea91106e 100644
+--- a/python/mozbuild/mozbuild/test/backend/test_recursivemake.py
++++ b/python/mozbuild/mozbuild/test/backend/test_recursivemake.py
+@@ -1448,6 +1448,23 @@ class TestRecursiveMakeBackend(BackendTester):
+ 
+         self.assertIn("qux.so_OBJS := qux1.o", lines)
+ 
++        with open(os.path.join(env.topobjdir, "static", "backend.mk")) as fh:
++            lines = [line.rstrip() for line in fh.readlines()]
++
++        self.assertIn("REAL_LIBRARY := bar.a", lines)
++        self.assertIn("SDK_LIBRARY := bar.a", lines)
++        self.assertNotIn("NO_EXPAND_LIBS := 1", lines)
++        self.assertIn("bar.a_OBJS := bar/bar1.o \\", lines)
++
++        with open(os.path.join(env.topobjdir, "root-deps.mk")) as fh:
++            lines = [line.rstrip() for line in fh.readlines()]
++
++        self.assertIn(
++            "static/target: real/target static/bar/bar_helper/target-objects "
++            "static/bar/target-objects",
++            lines,
++        )
++
+     def test_jar_manifests(self):
+         env = self._consume("jar-manifests", RecursiveMakeBackend)
+ 

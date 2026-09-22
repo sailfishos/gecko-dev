@@ -7,6 +7,7 @@
 #define nsAppShell_h__
 
 #include <qsocketnotifier.h>
+#include "mozilla/Atomics.h"
 #include "nsBaseAppShell.h"
 #include "nsCOMPtr.h"
 
@@ -24,6 +25,9 @@ public:
 
   nsresult Init();
 
+  NS_IMETHOD Observe(nsISupports *subject, const char *topic,
+                     const char16_t *data) override;
+
   virtual bool event (QEvent *e);
 
 protected:
@@ -33,6 +37,8 @@ protected:
 
 private:
   bool mHasNativeEventDispatcher = false;
+  bool mProcessingGeckoEvents = false;
+  mozilla::Atomic<bool> mShuttingDown{false};
 };
 
 

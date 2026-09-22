@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 8 Sep 2026 00:25:22 +0200
+Subject: [sailfishos][apz] Apply initial resolution before first paint
+
+A fixed meta viewport can arrive after an early fallback viewport has already
+been shrunk to fit. The first-paint refresh then skips resetting the stale
+resolution because the document disallows zooming, leaving the visual and
+layout viewports at different scales.
+
+Always calculate the initial resolution on first paint; the zoom permission
+still controls later user zooming. Add regression coverage for the
+fallback-to-fixed viewport transition.
+---
+ .../gtest/mvm/TestMobileViewportManager.cpp   | 21 ++++++++++++++++++-
+ layout/base/MobileViewportManager.cpp         |  8 ++++---
+ 2 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/gfx/layers/apz/test/gtest/mvm/TestMobileViewportManager.cpp b/gfx/layers/apz/test/gtest/mvm/TestMobileViewportManager.cpp
+index d903c74ae215..403c8ca7a17e 100644
+--- a/gfx/layers/apz/test/gtest/mvm/TestMobileViewportManager.cpp
++++ b/gfx/layers/apz/test/gtest/mvm/TestMobileViewportManager.cpp
+@@ -76,7 +76,7 @@ class MockMVMContext : public MVMContext {
+   Maybe<LayoutDeviceIntSize> GetDocumentViewerSize() const {
+     return Some(mDisplaySize);
+   }
+-  bool AllowZoomingForDocument() const { return true; }
++  bool AllowZoomingForDocument() const { return mAllowZooming; }
+   bool IsInReaderMode() const { return false; }
+   bool IsDocumentLoading() const { return false; }
+   bool IsDocumentFullscreen() const { return false; }
+@@ -108,6 +108,7 @@ class MockMVMContext : public MVMContext {
+   void SetLayoutFunction(const LayoutFunction& aLayoutFunction) {
+     mLayoutFunction = aLayoutFunction;
+   }
++  void SetAllowZooming(bool aAllowZooming) { mAllowZooming = aAllowZooming; }
+ 
+   // Allow test code to query the output metrics.
+   CSSSize GetICBSize() const { return mICBSize; }
+@@ -124,6 +125,7 @@ class MockMVMContext : public MVMContext {
+   AutoSizeFlag mAutoSizeFlag = AutoSizeFlag::AutoSize;
+   AutoScaleFlag mAutoScaleFlag = AutoScaleFlag::AutoScale;
+   ZoomFlag mZoomFlag = ZoomFlag::AllowZoom;
++  bool mAllowZooming = true;
+   // As a default layout function, just set the content size to the ICB size.
+   LayoutFunction mLayoutFunction = [](CSSSize aICBSize) { return aICBSize; };
+ 
+@@ -220,3 +222,20 @@ TEST_F(MVMTester, LandscapeToPortraitRotation_Bug1523844) {
+   EXPECT_EQ(CSSSize(600, 1200), mMVMContext->GetContentSize());
+   EXPECT_EQ(0.5f, mMVMContext->GetResolution());
+ }
++
++TEST_F(MVMTester, NonZoomableMetaViewportBeforeFirstPaint) {
++  mMVMContext->SetFixedViewportWidth(600);
++  mMVM->RequestReflow(false);
++  EXPECT_EQ(0.5f, mMVMContext->GetResolution());
++
++  mMVMContext->SetFixedViewportWidth(300);
++  mMVMContext->SetInitialScale(CSSToScreenScale(1.0f));
++  mMVMContext->SetMinScale(CSSToScreenScale(1.0f));
++  mMVMContext->SetMaxScale(CSSToScreenScale(1.0f));
++  mMVMContext->SetAllowZooming(false);
++  mMVM->HandleDOMMetaAdded();
++  EXPECT_EQ(0.5f, mMVMContext->GetResolution());
++
++  mMVM->SetInitialViewport();
++  EXPECT_EQ(1.0f, mMVMContext->GetResolution());
++}
+diff --git a/layout/base/MobileViewportManager.cpp b/layout/base/MobileViewportManager.cpp
+index ca80be577f63..8928ff0e0f22 100644
+--- a/layout/base/MobileViewportManager.cpp
++++ b/layout/base/MobileViewportManager.cpp
+@@ -673,9 +673,11 @@ void MobileViewportManager::RefreshViewportSize(bool aForceAdjustResolution) {
+           mMobileViewportSize != viewport);
+ 
+   if (mManagerType == ManagerType::VisualAndMetaViewport &&
+-      (aForceAdjustResolution || mContext->AllowZoomingForDocument())) {
+-    MVM_LOG("%p: Updating resolution because %d || %d\n", this,
+-            aForceAdjustResolution, mContext->AllowZoomingForDocument());
++      (aForceAdjustResolution || mIsFirstPaint ||
++       mContext->AllowZoomingForDocument())) {
++    MVM_LOG("%p: Updating resolution because %d || %d || %d\n", this,
++            aForceAdjustResolution, mIsFirstPaint,
++            mContext->AllowZoomingForDocument());
+     if (mIsFirstPaint) {
+       UpdateResolutionForFirstPaint(viewport);
+     } else {

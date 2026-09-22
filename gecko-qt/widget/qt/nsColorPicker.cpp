@@ -7,6 +7,7 @@
 
 #include <cstring>
 
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsIEmbedLiteJSON.h"
 #include "nsIPropertyBag2.h"
@@ -43,17 +44,14 @@ nsColorPicker::~nsColorPicker() {
   }
 }
 
-NS_IMETHODIMP
-nsColorPicker::Init(mozIDOMWindowProxy* aParent, const nsAString& aTitle,
-                    const nsAString& aInitialColor,
-                    const nsTArray<nsString>& aDefaultColors) {
-  NS_ENSURE_TRUE(aParent, NS_ERROR_FAILURE);
-
-  if (!NormalizeSimpleColor(aInitialColor, mInitialColor)) {
+nsresult nsColorPicker::InitNative(
+    const nsTArray<nsString>& aDefaultColors) {
+  nsAutoString normalizedInitialColor;
+  if (!NormalizeSimpleColor(mInitialColor, normalizedInitialColor)) {
     return NS_ERROR_FAILURE;
   }
+  mInitialColor = normalizedInitialColor;
 
-  mTitle = aTitle;
   mDefaultColors.Clear();
   for (const nsString& color : aDefaultColors) {
     nsAutoString normalizedColor;
@@ -65,19 +63,16 @@ nsColorPicker::Init(mozIDOMWindowProxy* aParent, const nsAString& aTitle,
   mEmbedAppService = do_GetService("@mozilla.org/embedlite-app-service;1");
   NS_ENSURE_TRUE(mEmbedAppService, NS_ERROR_FAILURE);
 
-  return EnsureWindowId(aParent);
-}
-
-NS_IMETHODIMP
-nsColorPicker::Open(nsIColorPickerShownCallback* aCallback) {
-  NS_ENSURE_ARG(aCallback);
-
-  if (mCallback) {
-    return NS_ERROR_NOT_AVAILABLE;
+  nsresult rv =
+      mEmbedAppService->GetIDByBrowsingContext(mBrowsingContext, &mWinId);
+  if (NS_SUCCEEDED(rv) && mWinId) {
+    return NS_OK;
   }
 
-  mCallback = aCallback;
+  return EnsureWindowId(mBrowsingContext->GetDOMWindow());
+}
 
+nsresult nsColorPicker::OpenNative() {
   nsresult rv =
       mEmbedAppService->AddMessageListener(kColorPickerResponse, this);
   if (NS_FAILED(rv)) {
@@ -98,13 +93,16 @@ nsColorPicker::Open(nsIColorPickerShownCallback* aCallback) {
 }
 
 nsresult nsColorPicker::EnsureWindowId(mozIDOMWindowProxy* aWindow) {
-  nsresult rv = mEmbedAppService->GetIDByWindow(aWindow, &mWinId);
-  if (NS_SUCCEEDED(rv) && mWinId) {
-    return NS_OK;
+  if (aWindow) {
+    nsresult rv = mEmbedAppService->GetIDByWindow(aWindow, &mWinId);
+    if (NS_SUCCEEDED(rv) && mWinId) {
+      return NS_OK;
+    }
   }
 
   nsCOMPtr<mozIDOMWindowProxy> activeWindow;
-  rv = mEmbedAppService->GetAnyEmbedWindow(true, getter_AddRefs(activeWindow));
+  nsresult rv =
+      mEmbedAppService->GetAnyEmbedWindow(true, getter_AddRefs(activeWindow));
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ENSURE_TRUE(activeWindow, NS_ERROR_FAILURE);
 

@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 7 Sep 2026 16:47:42 +0200
+Subject: [sailfishos][egl] Restrict shared context fallback to compositors
+
+WebGL2 requests PREFER_ES3 just like the offscreen WebRender compositors. A
+shared-context fallback based only on that flag therefore rejected WebGL2
+context creation too, with an empty failure ID.
+
+Require an explicit ALLOW_SHARED_CONTEXT_FALLBACK flag for that path and set
+it in the two offscreen compositor callers. Honor the flag on every borrowed
+Qt display because Mesa Wayland displays can lack pbuffer EGL configs. WebGL
+retains its own context creation while WebRender reuses SingletonGL and its
+shader objects.
+---
+ gfx/gl/GLContextProviderEGL.cpp                | 6 +++---
+ gfx/gl/GLContextTypes.h                        | 3 +++
+ gfx/webrender_bindings/RenderCompositorEGL.cpp | 4 +++-
+ gfx/webrender_bindings/RenderCompositorOGL.cpp | 4 +++-
+ 4 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index e8d4e17539d7..c3e2a6195e1f 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -1478,9 +1478,9 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
+         *out_failureId = "FEATURE_FAILURE_EGL_BORROWED_DISPLAY"_ns;
+         return nullptr;
+       }
+-      if (isHybris &&
+-          display->mOwnership == EglDisplay::Ownership::Borrowed &&
+-          requireGles3) {
++      if (display->mOwnership == EglDisplay::Ownership::Borrowed &&
++          requireGles3 &&
++          bool(desc.flags & CreateContextFlags::ALLOW_SHARED_CONTEXT_FALLBACK)) {
+         // In the WebRender compositor flow, the active borrowed display
+         // already backs RenderThread's SingletonGL. WebRender creates its
+         // shared shaders on that context, so a second, unshared EGL context
+diff --git a/gfx/gl/GLContextTypes.h b/gfx/gl/GLContextTypes.h
+index e43092b2b3cf..707ef1a1a935 100644
+--- a/gfx/gl/GLContextTypes.h
++++ b/gfx/gl/GLContextTypes.h
+@@ -39,6 +39,9 @@ enum class CreateContextFlags : uint16_t {
+ 
+   // Permit a configless surfaceless EGL context where supported.
+   ALLOW_SURFACELESS = 1 << 11,
++
++  // Permit compositor callers to fall back to their shared GL context.
++  ALLOW_SHARED_CONTEXT_FALLBACK = 1 << 12,
+ };
+ MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(CreateContextFlags)
+ 
+diff --git a/gfx/webrender_bindings/RenderCompositorEGL.cpp b/gfx/webrender_bindings/RenderCompositorEGL.cpp
+index a1f8467e223e..5a0ea9a2232a 100644
+--- a/gfx/webrender_bindings/RenderCompositorEGL.cpp
++++ b/gfx/webrender_bindings/RenderCompositorEGL.cpp
+@@ -50,7 +50,9 @@ UniquePtr<RenderCompositor> RenderCompositorEGL::Create(
+   if (useEmbedLiteOffscreen) {
+     nsCString failureId;
+     gl = gl::GLContextProvider::CreateHeadless(
+-        {gl::CreateContextFlags::PREFER_ES3}, &failureId);
++        {gl::CreateContextFlags::PREFER_ES3 |
++         gl::CreateContextFlags::ALLOW_SHARED_CONTEXT_FALLBACK},
++        &failureId);
+     if (!gl && !failureId.IsEmpty()) {
+       if (aError.IsEmpty()) {
+         aError.Assign(failureId);
+diff --git a/gfx/webrender_bindings/RenderCompositorOGL.cpp b/gfx/webrender_bindings/RenderCompositorOGL.cpp
+index a3cb63c84cbe..10883a7a9333 100644
+--- a/gfx/webrender_bindings/RenderCompositorOGL.cpp
++++ b/gfx/webrender_bindings/RenderCompositorOGL.cpp
+@@ -31,7 +31,9 @@ UniquePtr<RenderCompositor> RenderCompositorOGL::Create(
+   if (useEmbedLiteOffscreen) {
+     nsCString failureId;
+     gl = gl::GLContextProvider::CreateHeadless(
+-        {gl::CreateContextFlags::PREFER_ES3}, &failureId);
++        {gl::CreateContextFlags::PREFER_ES3 |
++         gl::CreateContextFlags::ALLOW_SHARED_CONTEXT_FALLBACK},
++        &failureId);
+     if (!gl && !failureId.IsEmpty()) {
+       aError.Assign(failureId);
+       return nullptr;

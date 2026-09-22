@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 16 Mar 2020 14:46:51 +0200
+Subject: Backport Embed MessageLoop contructor back (sha1 eb2dcea271970)
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ ipc/chromium/src/base/message_loop.cc | 24 ++++++++++++++++++++++++
+ ipc/chromium/src/base/message_loop.h  |  8 +++++++-
+ 2 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/ipc/chromium/src/base/message_loop.cc b/ipc/chromium/src/base/message_loop.cc
+index dc3c9fcd7489..2fcd85fdd89c 100644
+--- a/ipc/chromium/src/base/message_loop.cc
++++ b/ipc/chromium/src/base/message_loop.cc
+@@ -211,6 +211,30 @@ void MessageLoop::set_current(MessageLoop* loop) { get_tls_ptr().Set(loop); }
+ 
+ static mozilla::Atomic<int32_t> message_loop_id_seq(0);
+ 
++MessageLoop::MessageLoop(base::MessagePump* aMessagePump)
++    : type_(TYPE_EMBED),
++      id_(++message_loop_id_seq),
++      nestable_tasks_allowed_(true),
++      exception_restoration_(false),
++      incoming_queue_lock_("MessageLoop Incoming Queue Lock"),
++      state_(nullptr),
++      run_depth_base_(1),
++      shutting_down_(false),
++#ifdef XP_WIN
++      os_modal_loop_(false),
++#endif  // XP_WIN
++      transient_hang_timeout_(0),
++      permanent_hang_timeout_(0),
++      next_sequence_num_(0) {
++  DCHECK(!current()) << "should only have one message loop per thread";
++  get_tls_ptr().Set(this);
++
++  // Must initialize after current() is initialized.
++  mEventTarget = new EventTarget(this);
++
++  pump_ = aMessagePump;
++}
++
+ MessageLoop::MessageLoop(Type type, nsISerialEventTarget* aEventTarget)
+     : type_(type),
+       id_(++message_loop_id_seq),
+diff --git a/ipc/chromium/src/base/message_loop.h b/ipc/chromium/src/base/message_loop.h
+index 379679079a40..3f6d5b8c49ce 100644
+--- a/ipc/chromium/src/base/message_loop.h
++++ b/ipc/chromium/src/base/message_loop.h
+@@ -190,13 +190,15 @@ class MessageLoop : public base::MessagePump::Delegate {
+     TYPE_MOZILLA_PARENT,
+     TYPE_MOZILLA_NONMAINTHREAD,
+     TYPE_MOZILLA_NONMAINUITHREAD,
+-    TYPE_MOZILLA_ANDROID_UI
++    TYPE_MOZILLA_ANDROID_UI,
++    TYPE_EMBED
+   };
+ 
+   // Normally, it is not necessary to instantiate a MessageLoop.  Instead, it
+   // is typical to make use of the current thread's MessageLoop instance.
+   explicit MessageLoop(Type type = TYPE_DEFAULT,
+                        nsISerialEventTarget* aEventTarget = nullptr);
++  explicit MessageLoop(base::MessagePump* aMessagePump);
+   ~MessageLoop();
+ 
+   // Returns the type passed to the constructor.
+@@ -455,12 +457,16 @@ class MessageLoopForUI : public MessageLoop {
+  public:
+   explicit MessageLoopForUI(Type aType = TYPE_UI) : MessageLoop(aType) {}
+ 
++  explicit MessageLoopForUI(base::MessagePump* aMessagePump)
++      : MessageLoop(aMessagePump) {}
++
+   // Returns the MessageLoopForUI of the current thread.
+   static MessageLoopForUI* current() {
+     MessageLoop* loop = MessageLoop::current();
+     if (!loop) return nullptr;
+     Type type = loop->type();
+     DCHECK(type == MessageLoop::TYPE_UI ||
++           type == MessageLoop::TYPE_EMBED ||
+            type == MessageLoop::TYPE_MOZILLA_PARENT ||
+            type == MessageLoop::TYPE_MOZILLA_CHILD);
+     return static_cast<MessageLoopForUI*>(loop);

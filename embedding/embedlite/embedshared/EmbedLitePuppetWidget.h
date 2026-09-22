@@ -17,30 +17,28 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteViewChildIface.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/WidgetUtils.h"
 #include "PuppetWidgetBase.h"
 #include "nsCOMArray.h"
+#include "nsCOMPtr.h"
 #include "nsRect.h"
 
 namespace mozilla {
 
 namespace embedlite {
 
-class EmbedLiteWindowChild;
-
 class EmbedLitePuppetWidget : public PuppetWidgetBase
 {
 public:
-  EmbedLitePuppetWidget(EmbedLiteViewChildIface* view);
+  static already_AddRefed<nsIWidget> CreateForChromeHost(nsIWidget* aHost);
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  virtual already_AddRefed<nsIWidget>
-  CreateChild(const LayoutDeviceIntRect&  aRect,
-              widget::InitData* aInitData = nullptr,
-              bool              aForceUseIWidgetParent = false) override;
+  using PuppetWidgetBase::Create;
+  [[nodiscard]] nsresult Create(nsIWidget* aParent,
+                                const LayoutDeviceIntRect& aRect,
+                                const widget::InitData& aInitData) override;
 
   virtual void Destroy() override;
 
@@ -48,7 +46,7 @@ public:
 
   virtual void* GetNativeData(uint32_t aDataType) override;
 
-  virtual nsresult DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus) override;
+  virtual nsEventStatus DispatchEvent(WidgetGUIEvent* event) override;
 
   virtual void SetInputContext(const InputContext& aContext,
                                const InputContextAction& aAction) override;
@@ -61,29 +59,20 @@ public:
 
   virtual bool AsyncPanZoomEnabled() const override;
 
-  virtual void SetConfirmedTargetAPZC(uint64_t aInputBlockId,
-                                      const nsTArray<ScrollableLayerGuid>& aTargets) const override;
-
-  virtual void UpdateZoomConstraints(const uint32_t& aPresShellId,
-                             const ScrollableLayerGuid::ViewID &aViewId,
-                             const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
-
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
 
   virtual WindowRenderer* GetWindowRenderer() override;
 
-  bool DoSendContentReceivedInputBlock(uint64_t aInputBlockId,
-                                       bool aPreventDefault);
-  bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,
-                                     const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags);
-
   void AddObserver(EmbedLitePuppetWidgetObserver *aObserver);
   void RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver);
+  void NotifyChromeWindowFocusChanged(bool aFocused);
 
 protected:
+  EmbedLitePuppetWidget();
   virtual ~EmbedLitePuppetWidget() override;
-  EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
+  already_AddRefed<nsIWidget> AllocateChildPuppetWidget(
+      const widget::InitData& aInitData) override;
 
   virtual void ConfigureAPZCTreeManager();
   virtual void ConfigureAPZControllerThread();
@@ -92,11 +81,9 @@ protected:
   const char *Type() const override;
 
 private:
-  EmbedLitePuppetWidget();
   void RemoveIMEComposition();
-  EmbedLitePuppetWidget *GetParentPuppetWidget() const;
 
-  EmbedLiteViewChildIface* mView; // Not owned, can be null.
+  nsCOMPtr<nsIWidget> mPendingChromeHost;
 
   InputContext mInputContext;
   NativeIMEContext mNativeIMEContext;

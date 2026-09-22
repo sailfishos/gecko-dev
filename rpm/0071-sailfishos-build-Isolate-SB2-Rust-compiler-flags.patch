@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 26 Aug 2026 00:14:25 +0200
+Subject: [sailfishos][build] Isolate SB2 Rust compiler flags
+
+cc-rs concatenates generic CFLAGS and CXXFLAGS with triplet-specific
+values. Under accelerated SB2 builds that leaks target Arm flags into
+i686 build-script compilations.
+
+Stop exporting the generic values to Cargo when the SB2 execution shim
+is active. Gecko computed host and target flags remain available through
+their triplet-specific variables.
+---
+ config/makefiles/rust.mk | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
+index 0e6cb2be2883..1606a4ed77f7 100644
+--- a/config/makefiles/rust.mk
++++ b/config/makefiles/rust.mk
+@@ -181,6 +181,16 @@ endif # MOZ_ASAN || MOZ_UBSAN
+ endif # MOZ_TSAN
+ endif # !CROSS_COMPILE
+ 
++# The SB2 Rust accelerator executes build scripts on the tooling host. cc-rs
++# combines generic CFLAGS with its host- and target-specific variables, which
++# otherwise leaks target Arm flags into the i686 host compiler invocation.
++# Keep the make variables for the computed triplet-specific exports below, but
++# do not pass their generic forms to Cargo's environment.
++ifdef SB2_RUST_EXECVP_SHIM
++unexport CFLAGS
++unexport CXXFLAGS
++endif
++
+ ifeq (WINNT,$(HOST_OS_ARCH))
+ ifdef MOZ_CODE_COVERAGE
+ PASS_ONLY_BASE_CFLAGS_TO_RUST=1

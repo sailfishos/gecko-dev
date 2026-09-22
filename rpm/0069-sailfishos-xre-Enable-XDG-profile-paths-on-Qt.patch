@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 25 Aug 2026 00:32:50 +0200
+Subject: [sailfishos][xre] Enable XDG profile paths on Qt
+
+Co-authored-by: Sebastian Matkovich <38816871+smatkovi@users.noreply.github.com>
+---
+ toolkit/xre/nsXREDirProvider.cpp | 14 +++++++-------
+ toolkit/xre/nsXREDirProvider.h   |  4 ++--
+ 2 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/toolkit/xre/nsXREDirProvider.cpp b/toolkit/xre/nsXREDirProvider.cpp
+index fea288aa5b6d..bd12bc682c62 100644
+--- a/toolkit/xre/nsXREDirProvider.cpp
++++ b/toolkit/xre/nsXREDirProvider.cpp
+@@ -101,10 +101,10 @@ nsIFile* gDataDirHome = nullptr;
+ constinit nsCOMPtr<nsIFile> gDataDirProfileLocal{};
+ constinit nsCOMPtr<nsIFile> gDataDirProfile{};
+ 
+-#if defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ nsXREDirProvider::legacyOrXDGHomeTelemetry gXdgTelemetry =
+     nsXREDirProvider::legacyOrXDGHomeTelemetry::empty;
+-#endif  // defined(MOZ_WIDGET_GTK)
++#endif  // defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ 
+ // These are required to allow nsXREDirProvider to be usable in xpcshell tests.
+ // where gAppData is null.
+@@ -251,7 +251,7 @@ nsresult nsXREDirProvider::GetUserProfilesRootDir(nsIFile** aResult) {
+       rv = tmp;
+     }
+ 
+-#if defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+     switch (gXdgTelemetry) {
+       case legacyOrXDGHomeTelemetry::legacyExists:
+         mozilla::glean::profiles::creation_place.Get("legacy_existing"_ns)
+@@ -277,7 +277,7 @@ nsresult nsXREDirProvider::GetUserProfilesRootDir(nsIFile** aResult) {
+         }
+       } break;
+     }
+-#endif  // defined(MOZ_WIDGET_GTK)
++#endif  // defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   }
+   file.swap(*aResult);
+   return rv;
+@@ -1306,7 +1306,7 @@ nsresult nsXREDirProvider::AppendSysUserExtensionPath(nsIFile* aFile) {
+   return NS_OK;
+ }
+ 
+-#if defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ /*
+  * Return whether MOZ_LEGACY_HOME == 1, via environment or at build time
+  */
+@@ -1536,7 +1536,7 @@ nsresult nsXREDirProvider::GetLegacyOrXDGHomePath(const char* aHomeDir,
+ 
+   return NS_OK;
+ }
+-#endif  // defined(MOZ_WIDGET_GTK)
++#endif  // defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ 
+ nsresult nsXREDirProvider::AppendProfilePath(nsIFile* aFile, bool aLocal) {
+   NS_ASSERTION(aFile, "Null pointer!");
+@@ -1598,7 +1598,7 @@ nsresult nsXREDirProvider::AppendProfilePath(nsIFile* aFile, bool aLocal) {
+   // Make it hidden (by starting with "."), except when local (the
+   // profile is already under ~/.cache or XDG_CACHE_HOME).
+   if (!aLocal
+-#  if defined(MOZ_WIDGET_GTK)
++#  if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+       && (IsForceLegacyHome() || LegacyHomeExists(nullptr))
+ #  endif
+   ) {
+diff --git a/toolkit/xre/nsXREDirProvider.h b/toolkit/xre/nsXREDirProvider.h
+index 6c7e1990d3be..487619490081 100644
+--- a/toolkit/xre/nsXREDirProvider.h
++++ b/toolkit/xre/nsXREDirProvider.h
+@@ -68,7 +68,7 @@ class nsXREDirProvider final : public nsIDirectoryServiceProvider2,
+ 
+   static nsresult GetUserDataDirectory(nsIFile** aFile, bool aLocal);
+ 
+-#if defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   static nsresult GetLegacyOrXDGEnvValue(const char* aHomeDir,
+                                          const char* aEnvName,
+                                          nsCString aSubdir, nsIFile** aFile,
+@@ -93,7 +93,7 @@ class nsXREDirProvider final : public nsIDirectoryServiceProvider2,
+     xdgDefault,
+     xdgConfigHome
+   };
+-#endif  // defined(MOZ_WIDGET_GTK)
++#endif  // defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ 
+   /* make sure you clone it, if you need to do stuff to it */
+   nsIFile* GetGREDir() { return mGREDir; }

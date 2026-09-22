@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 21:23:41 +0200
+Subject: [sailfishos][widget] Allow custom puppet child allocation
+
+EmbedLite uses its own PuppetWidget implementation for both popup and
+ordinary child views. Preserve that backend while keeping the ESR140 final
+CreateChild implementation by adding a virtual allocation hook.
+---
+ widget/nsIWidget.cpp | 6 ++----
+ widget/nsIWidget.h   | 7 +++++++
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/widget/nsIWidget.cpp b/widget/nsIWidget.cpp
+index 32b3ca63d24a..7b83fd8521a1 100644
+--- a/widget/nsIWidget.cpp
++++ b/widget/nsIWidget.cpp
+@@ -536,11 +536,9 @@ already_AddRefed<nsIWidget> nsIWidget::CreateChild(
+     case WidgetType::Headless:
+       widget = nsIWidget::CreateHeadlessWidget();
+       break;
+-    case WidgetType::Puppet: {
+-      // This really only should happen in crashtests that have menupopups.
+-      widget = nsIWidget::CreatePuppetWidget(nullptr);
++    case WidgetType::Puppet:
++      widget = AllocateChildPuppetWidget(aInitData);
+       break;
+-    }
+   }
+ 
+   if (!widget) {
+diff --git a/widget/nsIWidget.h b/widget/nsIWidget.h
+index 459b278379ee..3b6637046f90 100644
+--- a/widget/nsIWidget.h
++++ b/widget/nsIWidget.h
+@@ -2131,6 +2131,13 @@ class nsIWidget : public nsSupportsWeakReference {
+   static already_AddRefed<nsIWidget> CreatePuppetWidget(
+       BrowserChild* aBrowserChild);
+ 
++  virtual already_AddRefed<nsIWidget> AllocateChildPuppetWidget(
++      const InitData& aInitData) {
++    MOZ_ASSERT(aInitData.mWindowType == WindowType::Popup,
++               "Creating non-popup puppet widget?");
++    return nsIWidget::CreatePuppetWidget(nullptr);
++  }
++
+   static already_AddRefed<nsIWidget> CreateHeadlessWidget();
+ 
+   /**

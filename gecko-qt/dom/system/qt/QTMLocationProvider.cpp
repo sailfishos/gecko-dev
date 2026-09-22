@@ -65,8 +65,6 @@ QTMLocationProvider::Startup()
     if (!mLocation)
         return NS_ERROR_NOT_IMPLEMENTED;
 
-    mLocation->startUpdates();
-
     return NS_OK;
 }
 
@@ -74,6 +72,7 @@ NS_IMETHODIMP
 QTMLocationProvider::Watch(nsIGeolocationUpdate* aCallback)
 {
     mCallback = aCallback;
+    mLocation->startUpdates();
 
     return NS_OK;
 }

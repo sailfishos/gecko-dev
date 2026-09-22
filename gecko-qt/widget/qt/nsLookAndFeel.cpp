@@ -261,7 +261,6 @@ nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme, nscolor &aResult)
         aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
         break;
 
-    case ColorID::MozEventreerow:
     case ColorID::Field:
         aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
         break;
@@ -274,10 +273,7 @@ nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme, nscolor &aResult)
     case ColorID::MozDialogtext:
         aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
         break;
-    case ColorID::MozDragtargetzone:
-        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
-        break;
-    case ColorID::MozButtondefault:
+    case ColorID::Buttonborder:
         // default button border color
         aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
         break;
@@ -302,7 +298,7 @@ nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme, nscolor &aResult)
     case ColorID::MozOddtreerow:
         aResult = NS_TRANSPARENT;
         break;
-    case ColorID::MozNativehyperlinktext:
+    case ColorID::Linktext:
         aResult = NS_SAME_AS_FOREGROUND_COLOR;
         break;
     case ColorID::MozComboboxtext:
@@ -310,9 +306,6 @@ nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme, nscolor &aResult)
         break;
     case ColorID::MozCombobox:
         aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
-        break;
-    case ColorID::MozMenubartext:
-        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
         break;
     case ColorID::MozMenubarhovertext:
         aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
@@ -350,10 +343,6 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t &aResult)
             aResult = 1;
             break;
 
-        case IntID::ShowCaretDuringSelection:
-            aResult = 0;
-            break;
-
         case IntID::SelectTextfieldsOnKeyFocus:
             // Select textfield content when focused by kbd
             // used by EventStateManager::sTextfieldSelectModel
@@ -364,10 +353,6 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t &aResult)
             aResult = 200;
             break;
 
-        case IntID::TooltipDelay:
-            aResult = 500;
-            break;
-
         case IntID::MenusCanOverlapOSBar:
             // we want XUL popups to be able to overlap the task bar.
             aResult = 1;
@@ -375,11 +360,6 @@ nsLookAndFeel::NativeGetInt(IntID aID, int32_t &aResult)
 
         case IntID::ScrollArrowStyle:
             aResult = eScrollArrowStyle_Single;
-            break;
-
-        case IntID::WindowsDefaultTheme:
-            aResult = 0;
-            rv = NS_ERROR_NOT_IMPLEMENTED;
             break;
 
         case IntID::IMERawInputUnderlineStyle:
