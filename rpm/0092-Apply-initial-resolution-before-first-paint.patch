@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Fri, 6 Nov 2026 12:28:03 +0000
+Subject: [PATCH] Apply initial resolution before first paint
+
+A fixed meta viewport can arrive after an early fallback viewport has already
+been shrunk to fit. Always calculate the initial resolution on first paint,
+even when the document disallows zooming. Keep later user zooming subject
+to the existing permission check.
+---
+ layout/base/MobileViewportManager.cpp | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/layout/base/MobileViewportManager.cpp b/layout/base/MobileViewportManager.cpp
+index 0b37430d39c5..d27419e3078e 100644
+--- a/layout/base/MobileViewportManager.cpp
++++ b/layout/base/MobileViewportManager.cpp
+@@ -662,9 +662,11 @@ void MobileViewportManager::RefreshViewportSize(bool aForceAdjustResolution) {
+           mMobileViewportSize != viewport);
+
+   if (mManagerType == ManagerType::VisualAndMetaViewport &&
+-      (aForceAdjustResolution || mContext->AllowZoomingForDocument())) {
+-    MVM_LOG("%p: Updating resolution because %d || %d\n", this,
+-            aForceAdjustResolution, mContext->AllowZoomingForDocument());
++      (aForceAdjustResolution || mIsFirstPaint ||
++       mContext->AllowZoomingForDocument())) {
++    MVM_LOG("%p: Updating resolution because %d || %d || %d\n", this,
++            aForceAdjustResolution, mIsFirstPaint,
++            mContext->AllowZoomingForDocument());
+     if (mIsFirstPaint) {
+       UpdateResolutionForFirstPaint(viewport);
+     } else {
