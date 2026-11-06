@@ -24,7 +24,7 @@ default value of the preference from true to false so as to allow this.
  4 files changed, 26 insertions(+), 2 deletions(-)
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index eeda4cc25412..13e75da963ac 100644
+index 3e005dac3b1a..e028c9741483 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -5075,6 +5075,29 @@

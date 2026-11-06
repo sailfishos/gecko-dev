@@ -59,7 +59,7 @@ into the cutout area.
  create mode 100644 widget/EmbedLiteCompositorWidget.h
 
 diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
-index 8dce4539c40f..e5bea965c8ae 100644
+index f8e0326a1a0d..6d0d3b2cd124 100644
 --- a/dom/base/Document.cpp
 +++ b/dom/base/Document.cpp
 @@ -155,6 +155,7 @@
@@ -122,7 +122,7 @@ index 8dce4539c40f..e5bea965c8ae 100644
    mLastModifiedViewportMetaData = std::move(aData);
    // Trigger recomputation of the nsViewportInfo the next time it's queried.
 diff --git a/dom/base/Document.h b/dom/base/Document.h
-index bbc5b22260a0..25ffc2cdffeb 100644
+index 16dde2db1f4c..fd586319c8e2 100644
 --- a/dom/base/Document.h
 +++ b/dom/base/Document.h
 @@ -1336,6 +1336,9 @@ class Document : public nsINode,
@@ -135,7 +135,7 @@ index bbc5b22260a0..25ffc2cdffeb 100644
    /**
     * True iff this doc will ignore manual character encoding overrides.
     */
-@@ -5210,6 +5213,10 @@ class Document : public nsINode,
+@@ -5214,6 +5217,10 @@ class Document : public nsINode,
    // https://drafts.csswg.org/css-round-display/#viewport-fit-descriptor
    ViewportFitType mViewportFit;
  
@@ -1274,10 +1274,10 @@ index 46de5e96410f..2d2669c09841 100644
    void PrependSheetOfType(Origin, StyleSheet*);
    void AppendSheetOfType(Origin, StyleSheet*);
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index c900d851198a..0a9435d4cb50 100644
+index f308254b6dc3..8314bf9e0316 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -11915,7 +11915,7 @@
+@@ -11925,7 +11925,7 @@
  - name: network.process.enabled
    type: RelaxedAtomicBool
    mirror: always

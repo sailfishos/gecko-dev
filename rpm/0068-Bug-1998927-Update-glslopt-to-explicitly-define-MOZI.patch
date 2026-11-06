@@ -15,10 +15,10 @@ Differential Revision: https://phabricator.services.mozilla.com/D271746
  create mode 100644 third_party/rust/glslopt/Cargo.lock
 
 diff --git a/Cargo.lock b/Cargo.lock
-index 9a1cc8359fe7..173e305211f9 100644
+index 4fde98083c3b..658fdfcc6c4c 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -2269,9 +2269,9 @@ dependencies = [
+@@ -2267,9 +2267,9 @@ dependencies = [
  
  [[package]]
  name = "glslopt"
