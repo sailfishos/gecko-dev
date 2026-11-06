@@ -79,7 +79,7 @@ index d55591d10a08..671a44ac4bc8 100644
    // When mChildToParentConversionMatrix is Nothing() this value is invalid.
    ScreenRect mTopLevelViewportVisibleRectInBrowserCoords;
 diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
-index d1910fcec5ff..77aef3611828 100644
+index 2cd759ec1e86..ebc6b22a54ec 100644
 --- a/dom/ipc/BrowserParent.cpp
 +++ b/dom/ipc/BrowserParent.cpp
 @@ -166,8 +166,8 @@ using namespace mozilla::widget;
@@ -92,7 +92,7 @@ index d1910fcec5ff..77aef3611828 100644
  
  LazyLogModule gBrowserFocusLog("BrowserFocus");
  
-@@ -633,6 +633,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
+@@ -659,6 +659,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
    mDPI = -1;
    TryCacheDPIAndScale();
  
@@ -110,7 +110,7 @@ index d1910fcec5ff..77aef3611828 100644
    if (mRemoteLayerTreeOwner.IsInitialized()) {
      mRemoteLayerTreeOwner.OwnerContentChanged();
    }
-@@ -3389,6 +3400,30 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
+@@ -3439,6 +3450,30 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
    return IPC_OK();
  }
  
@@ -142,10 +142,10 @@ index d1910fcec5ff..77aef3611828 100644
                                     StructuredCloneData* aData,
                                     nsTArray<StructuredCloneData>* aRetVal) {
 diff --git a/dom/ipc/BrowserParent.h b/dom/ipc/BrowserParent.h
-index 57eeb368c6bc..1fb99639bc9b 100644
+index d5ca28ed484c..6c2b882fc759 100644
 --- a/dom/ipc/BrowserParent.h
 +++ b/dom/ipc/BrowserParent.h
-@@ -395,6 +395,11 @@ class BrowserParent final : public PBrowserParent,
+@@ -403,6 +403,11 @@ class BrowserParent final : public PBrowserParent,
  
    mozilla::ipc::IPCResult RecvHideTooltip();
  

@@ -10,7 +10,7 @@ Subject: [PATCH 04/67] Read rustc host from environment. JB#53019 OMP#JOLLA-93
  3 files changed, 12 insertions(+), 8 deletions(-)
 
 diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
-index 7a2fd1ae7061..4a4089067ee3 100644
+index df650b11ea1a..74d400191a76 100644
 --- a/build/moz.configure/rust.configure
 +++ b/build/moz.configure/rust.configure
 @@ -101,6 +101,7 @@ set_config("RUSTC", rustc)
