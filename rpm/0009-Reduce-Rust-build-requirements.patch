@@ -29,10 +29,10 @@ may be a better fix.
  2 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
-index 4a4089067ee3..4617a1a7aa29 100644
+index 74d400191a76..8649cca23306 100644
 --- a/build/moz.configure/rust.configure
 +++ b/build/moz.configure/rust.configure
-@@ -668,8 +668,8 @@ def rust_compile_flags(
+@@ -689,8 +689,8 @@ def rust_compile_flags(
      if opt_level == "0" and not debug_rust:
          debug_assertions = False
  

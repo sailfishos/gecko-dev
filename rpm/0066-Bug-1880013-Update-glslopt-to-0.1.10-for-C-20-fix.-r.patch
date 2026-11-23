@@ -21,10 +21,10 @@ Differential Revision: https://phabricator.services.mozilla.com/D201850
  delete mode 100644 third_party/rust/glslopt/glsl-optimizer/include/c99_math.h
 
 diff --git a/Cargo.lock b/Cargo.lock
-index f0fb30a12b75..91fffbe74ceb 100644
+index 6e372fc2980b..78d068faee56 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -2269,9 +2269,9 @@ dependencies = [
+@@ -2267,9 +2267,9 @@ dependencies = [
  
  [[package]]
  name = "glslopt"

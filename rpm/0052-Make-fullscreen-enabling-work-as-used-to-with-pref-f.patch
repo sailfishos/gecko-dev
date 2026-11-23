@@ -15,10 +15,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 6 insertions(+)
 
 diff --git a/dom/base/nsGlobalWindowOuter.cpp b/dom/base/nsGlobalWindowOuter.cpp
-index ba31dffd9c55..2beca20440e9 100644
+index 15681f09ddba..2f2868f4d8a1 100644
 --- a/dom/base/nsGlobalWindowOuter.cpp
 +++ b/dom/base/nsGlobalWindowOuter.cpp
-@@ -4440,10 +4440,16 @@ nsresult nsGlobalWindowOuter::SetFullscreenInternal(FullscreenReason aReason,
+@@ -4445,10 +4445,16 @@ nsresult nsGlobalWindowOuter::SetFullscreenInternal(FullscreenReason aReason,
    if (rootItem != mDocShell)
      return window->SetFullscreenInternal(aReason, aFullscreen);
  

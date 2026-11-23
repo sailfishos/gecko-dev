@@ -15,10 +15,10 @@ Differential Revision: https://phabricator.services.mozilla.com/D220703
  6 files changed, 8 insertions(+), 8 deletions(-)
 
 diff --git a/Cargo.lock b/Cargo.lock
-index 91fffbe74ceb..9a1cc8359fe7 100644
+index 78d068faee56..4fde98083c3b 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -2269,9 +2269,9 @@ dependencies = [
+@@ -2267,9 +2267,9 @@ dependencies = [
  
  [[package]]
  name = "glslopt"

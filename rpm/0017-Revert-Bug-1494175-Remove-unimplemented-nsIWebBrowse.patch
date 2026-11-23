@@ -20,7 +20,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  6 files changed, 28 insertions(+), 4 deletions(-)
 
 diff --git a/docshell/base/nsDocShellTreeOwner.cpp b/docshell/base/nsDocShellTreeOwner.cpp
-index b49dfb63434c..1b73bf2b594a 100644
+index a7aaca999098..6d41853678f7 100644
 --- a/docshell/base/nsDocShellTreeOwner.cpp
 +++ b/docshell/base/nsDocShellTreeOwner.cpp
 @@ -522,10 +522,7 @@ NS_IMETHODIMP

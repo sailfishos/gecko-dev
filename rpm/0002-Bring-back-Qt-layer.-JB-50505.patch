@@ -1769,7 +1769,7 @@ index 229a43854e8e..34c5e82e6f55 100644
        return true;
  #elif defined(XP_MACOSX)
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index ee23f1ed8c9b..eeda4cc25412 100644
+index 1a2f3169f5ad..3e005dac3b1a 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -6234,7 +6234,7 @@
